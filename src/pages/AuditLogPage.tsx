@@ -14,7 +14,8 @@ import {
     Eye,
     SignIn,
     SignOut,
-    Key
+    Key,
+    CalendarBlank
 } from '@phosphor-icons/react'
 
 interface AuditEntry {
@@ -191,6 +192,14 @@ export default function AuditLogPage() {
                     ))}
                 </select>
                 <div className="date-range">
+                    <CalendarBlank
+                        size={18}
+                        weight="regular"
+                        onClick={() => {
+                            const input = document.querySelector('.date-range input[type="date"]') as HTMLInputElement;
+                            if (input) input.showPicker?.();
+                        }}
+                    />
                     <input
                         type="date"
                         value={dateFrom}

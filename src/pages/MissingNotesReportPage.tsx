@@ -248,12 +248,12 @@ export default function MissingNotesReportPage() {
                 <table className="data-table">
                     <thead>
                         <tr>
-                            <th>Client</th>
-                            <th>Session Date</th>
-                            <th>Service</th>
-                            <th>Provider</th>
-                            <th>Overdue</th>
-                            <th>Action</th>
+                            <th style={{ width: '18%' }}>Client</th>
+                            <th style={{ width: '15%' }}>Session Date</th>
+                            <th style={{ width: '22%' }}>Service</th>
+                            <th style={{ width: '18%' }}>Provider</th>
+                            <th style={{ width: '14%', textAlign: 'center' }}>Overdue</th>
+                            <th style={{ width: '13%', textAlign: 'center' }}>Action</th>
                         </tr>
                     </thead>
                     <tbody>

@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Butterfly, House, ArrowLeft } from '@phosphor-icons/react'
+import { House, ArrowLeft } from '@phosphor-icons/react'
 
 export default function NotFoundPage() {
     const navigate = useNavigate()
@@ -8,8 +8,7 @@ export default function NotFoundPage() {
         <div className="not-found-page">
             <div className="not-found-content">
                 <div className="not-found-logo">
-                    <Butterfly size={36} weight="duotone" />
-                    <span>Sirena Health</span>
+                    <img src="/images/EHRlogo.png" alt="Sirena Health" className="not-found-logo-img" />
                 </div>
 
                 <div className="not-found-code">404</div>

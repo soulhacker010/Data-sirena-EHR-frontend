@@ -260,22 +260,22 @@ export default function AuthorizationReportPage() {
                 <table className="data-table">
                     <thead>
                         <tr>
-                            <th>Status</th>
-                            <th>Client</th>
-                            <th>Service</th>
-                            <th>Payer</th>
-                            <th>Period</th>
-                            <th>Total Units</th>
-                            <th>Used</th>
-                            <th>Remaining</th>
-                            <th>Usage</th>
-                            <th>Actions</th>
+                            <th style={{ width: '5%', textAlign: 'center' }}>Status</th>
+                            <th style={{ width: '14%' }}>Client</th>
+                            <th style={{ width: '16%' }}>Service</th>
+                            <th style={{ width: '10%' }}>Payer</th>
+                            <th style={{ width: '16%' }}>Period</th>
+                            <th style={{ textAlign: 'center' }}>Total Units</th>
+                            <th style={{ textAlign: 'center' }}>Used</th>
+                            <th style={{ textAlign: 'center' }}>Remaining</th>
+                            <th style={{ width: '13%' }}>Usage</th>
+                            <th style={{ width: '8%', textAlign: 'center' }}>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
                         {filteredAuths.map(auth => (
                             <tr key={auth.id} className={getUsageClass(auth.percentUsed)}>
-                                <td>{getStatusIcon(auth.percentUsed)}</td>
+                                <td style={{ textAlign: 'center' }}>{getStatusIcon(auth.percentUsed)}</td>
                                 <td>
                                     <a
                                         href={`/clients/${auth.clientId}`}
@@ -296,9 +296,9 @@ export default function AuthorizationReportPage() {
                                         {new Date(auth.startDate).toLocaleDateString()} - {new Date(auth.endDate).toLocaleDateString()}
                                     </span>
                                 </td>
-                                <td>{auth.totalUnits}</td>
-                                <td>{auth.usedUnits}</td>
-                                <td>{auth.remainingUnits}</td>
+                                <td style={{ textAlign: 'center' }}>{auth.totalUnits}</td>
+                                <td style={{ textAlign: 'center' }}>{auth.usedUnits}</td>
+                                <td style={{ textAlign: 'center' }}>{auth.remainingUnits}</td>
                                 <td>
                                     <div className="usage-bar-container">
                                         <div
@@ -308,7 +308,7 @@ export default function AuthorizationReportPage() {
                                         <span className="usage-percent">{auth.percentUsed}%</span>
                                     </div>
                                 </td>
-                                <td>
+                                <td style={{ textAlign: 'center' }}>
                                     {auth.percentUsed >= 80 && (
                                         <button
                                             className="btn-sm btn-outline"

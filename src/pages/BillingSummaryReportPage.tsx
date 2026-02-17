@@ -9,7 +9,8 @@ import {
     CreditCard,
     Clock,
     WarningCircle,
-    CheckCircle
+    CheckCircle,
+    CalendarBlank
 } from '@phosphor-icons/react'
 
 // Mock billing summary data
@@ -100,8 +101,16 @@ export default function BillingSummaryReportPage() {
 
             {/* Filters */}
             <div className="report-filters">
-                <div className="filter-group">
+                <div className="filter-group date-range" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <label className="filter-label">From:</label>
+                    <CalendarBlank
+                        size={18}
+                        weight="regular"
+                        onClick={() => {
+                            const input = document.querySelector('.report-filters input[type="date"]') as HTMLInputElement;
+                            if (input) input.showPicker?.();
+                        }}
+                    />
                     <input
                         type="date"
                         value={dateFrom}
@@ -109,8 +118,16 @@ export default function BillingSummaryReportPage() {
                         className="form-input-basic filter-date"
                     />
                 </div>
-                <div className="filter-group">
+                <div className="filter-group date-range" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <label className="filter-label">To:</label>
+                    <CalendarBlank
+                        size={18}
+                        weight="regular"
+                        onClick={() => {
+                            const inputs = document.querySelectorAll('.report-filters input[type="date"]');
+                            if (inputs[1]) (inputs[1] as HTMLInputElement).showPicker?.();
+                        }}
+                    />
                     <input
                         type="date"
                         value={dateTo}
@@ -177,19 +194,19 @@ export default function BillingSummaryReportPage() {
                     <table className="data-table">
                         <thead>
                             <tr>
-                                <th>Payer</th>
-                                <th>Billed</th>
-                                <th>Collected</th>
-                                <th>Rate</th>
+                                <th style={{ width: '35%' }}>Payer</th>
+                                <th style={{ textAlign: 'right' }}>Billed</th>
+                                <th style={{ textAlign: 'right' }}>Collected</th>
+                                <th style={{ textAlign: 'center', width: '15%' }}>Rate</th>
                             </tr>
                         </thead>
                         <tbody>
                             {mockPayerBreakdown.map(payer => (
                                 <tr key={payer.payer}>
                                     <td><strong>{payer.payer}</strong></td>
-                                    <td>{formatCurrency(payer.billed)}</td>
-                                    <td className="text-success">{formatCurrency(payer.collected)}</td>
-                                    <td>
+                                    <td style={{ textAlign: 'right' }}>{formatCurrency(payer.billed)}</td>
+                                    <td style={{ textAlign: 'right' }} className="text-success">{formatCurrency(payer.collected)}</td>
+                                    <td style={{ textAlign: 'center' }}>
                                         <span className={`rate-badge ${payer.rate >= 80 ? 'rate-good' : payer.rate >= 70 ? 'rate-ok' : 'rate-poor'}`}>
                                             {payer.rate}%
                                         </span>

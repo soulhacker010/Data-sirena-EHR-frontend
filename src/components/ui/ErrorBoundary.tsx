@@ -1,6 +1,6 @@
 import { Component } from 'react'
 import type { ErrorInfo, ReactNode } from 'react'
-import { Butterfly, ArrowCounterClockwise, Warning } from '@phosphor-icons/react'
+import { Warning, ArrowCounterClockwise } from '@phosphor-icons/react'
 
 interface ErrorBoundaryProps {
     children: ReactNode
@@ -40,8 +40,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
                         </div>
 
                         <div className="error-boundary-logo">
-                            <Butterfly size={28} weight="duotone" />
-                            <span>Sirena Health</span>
+                            <img src="/images/EHRlogo.png" alt="Sirena Health" className="error-boundary-logo-img" />
                         </div>
 
                         <h1 className="error-boundary-title">Something went wrong</h1>

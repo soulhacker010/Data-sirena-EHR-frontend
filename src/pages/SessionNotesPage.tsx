@@ -568,7 +568,14 @@ export default function SessionNotesPage() {
 
                 {/* Date Range Filter */}
                 <div className="filter-group date-range">
-                    <CalendarBlank size={18} weight="regular" />
+                    <CalendarBlank
+                        size={18}
+                        weight="regular"
+                        onClick={() => {
+                            const input = document.querySelector('.filter-group.date-range input[type="date"]') as HTMLInputElement;
+                            if (input) input.showPicker?.();
+                        }}
+                    />
                     <input
                         type="date"
                         value={dateFrom}

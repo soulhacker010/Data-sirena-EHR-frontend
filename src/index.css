@@ -151,6 +151,12 @@ button {
   color: var(--color-text);
 }
 
+.sidebar-logo-img {
+  height: 36px;
+  width: auto;
+  object-fit: contain;
+}
+
 .sidebar-section {
   margin-bottom: 1.5rem;
 }
@@ -378,6 +384,12 @@ button {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
 .stat-card-content {
@@ -521,6 +533,12 @@ button {
   padding: 1rem;
   background: var(--color-bg);
   border-radius: 0.5rem;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.billing-item:hover {
+  background: var(--color-border);
+  transform: translateX(2px);
 }
 
 .billing-item-icon {
@@ -636,8 +654,14 @@ button {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.75rem 0;
+  padding: 0.75rem;
   border-bottom: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  transition: background 0.2s ease;
+}
+
+.appointment-item:hover {
+  background: var(--color-bg);
 }
 
 .appointment-item:last-child {
@@ -829,6 +853,12 @@ button {
   font-size: 1.25rem;
   font-weight: 700;
   color: var(--color-text);
+}
+
+.auth-logo-img {
+  height: 48px;
+  width: auto;
+  object-fit: contain;
 }
 
 .auth-header {
@@ -1969,6 +1999,29 @@ button {
   color: var(--color-text-muted);
   font-weight: 500;
 }
+
+/* Date Input Specific Styling - Ensure Calendar Picker Works */
+input[type="date"].form-input-basic,
+input[type="date"].filter-date,
+input[type="date"].form-input {
+  cursor: pointer;
+  position: relative;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 1;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-left: 8px;
+  pointer-events: auto;
+}
+
+input[type="date"]:hover::-webkit-calendar-picker-indicator {
+  opacity: 0.7;
+}
+
 
 .form-actions {
   display: flex;
@@ -3138,6 +3191,18 @@ button {
   gap: 0.5rem;
 }
 
+.filter-group.date-range svg,
+.date-range svg {
+  cursor: pointer;
+  color: var(--color-text-muted);
+  transition: color 0.2s ease;
+}
+
+.filter-group.date-range svg:hover,
+.date-range svg:hover {
+  color: var(--color-primary);
+}
+
 .date-input {
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--color-border);
@@ -3146,6 +3211,7 @@ button {
   font-size: 0.85rem;
   color: var(--color-text);
   min-width: 130px;
+  cursor: pointer;
 }
 
 .date-input:focus {
@@ -4387,11 +4453,7 @@ button {
   color: var(--color-text-muted);
 }
 
-.btn-sm {
-  padding: 0.375rem 0.75rem;
-  font-size: 0.8rem;
-}
-
+/* .btn-sm defined in report styles section below */
 .btn-ghost {
   background: transparent;
   border: none;
@@ -4948,6 +5010,7 @@ button {
   border: 1px solid var(--color-border);
   border-radius: 0.5rem;
   font-size: 0.85rem;
+  cursor: pointer;
 }
 
 .date-range span {
@@ -6959,6 +7022,12 @@ tr.overdue-critical {
   font-size: 1.125rem;
 }
 
+.error-boundary-logo-img {
+  height: 40px;
+  width: auto;
+  object-fit: contain;
+}
+
 .error-boundary-title {
   font-size: 1.5rem;
   font-weight: 700;
@@ -7018,6 +7087,12 @@ tr.overdue-critical {
   color: var(--color-primary);
   font-weight: 700;
   font-size: 1.125rem;
+}
+
+.not-found-logo-img {
+  height: 48px;
+  width: auto;
+  object-fit: contain;
 }
 
 .not-found-code {

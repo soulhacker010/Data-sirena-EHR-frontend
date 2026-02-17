@@ -2,7 +2,6 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { loginSchema } from '../lib/validationSchemas'
 import {
-    Butterfly,
     Eye,
     EyeSlash,
     EnvelopeSimple,
@@ -61,8 +60,7 @@ export default function LoginPage() {
                 <div className="auth-form-container">
                     {/* Logo */}
                     <div className="auth-logo">
-                        <Butterfly size={36} weight="duotone" className="text-teal-500" />
-                        <span className="auth-logo-text">Sirena Health</span>
+                        <img src="/images/EHRlogo.png" alt="Sirena Health" className="auth-logo-img" />
                     </div>
 
                     {/* Welcome Text */}

@@ -98,7 +98,7 @@ export default function DashboardPage() {
 
             {/* Stats Cards */}
             <div className="stats-grid">
-                <div className="stat-card">
+                <div className="stat-card" onClick={() => navigate('/clients')} style={{ cursor: 'pointer' }}>
                     <div className="stat-card-content">
                         <p className="stat-card-label">Total Clients</p>
                         <p className="stat-card-value">127</p>
@@ -113,7 +113,7 @@ export default function DashboardPage() {
                     </div>
                 </div>
 
-                <div className="stat-card">
+                <div className="stat-card" onClick={() => navigate('/calendar')} style={{ cursor: 'pointer' }}>
                     <div className="stat-card-content">
                         <p className="stat-card-label">Today's Appointments</p>
                         <p className="stat-card-value">{todayAppointments.length}</p>
@@ -128,7 +128,7 @@ export default function DashboardPage() {
                     </div>
                 </div>
 
-                <div className="stat-card">
+                <div className="stat-card" onClick={() => navigate('/notes')} style={{ cursor: 'pointer' }}>
                     <div className="stat-card-content">
                         <p className="stat-card-label">Pending Notes</p>
                         <p className="stat-card-value">{pendingNotes.length}</p>
@@ -142,7 +142,7 @@ export default function DashboardPage() {
                     </div>
                 </div>
 
-                <div className="stat-card">
+                <div className="stat-card" onClick={() => navigate('/reports/authorizations')} style={{ cursor: 'pointer' }}>
                     <div className="stat-card-content">
                         <p className="stat-card-label">Auth Alerts</p>
                         <p className="stat-card-value">{authAlerts.length}</p>
@@ -182,10 +182,10 @@ export default function DashboardPage() {
                 {/* Left: Chart + Billing */}
                 <div className="space-y-6">
                     {/* Sessions Trend Chart */}
-                    <div className="card">
+                    <div className="card" onClick={() => navigate('/reports/session-summary')} style={{ cursor: 'pointer' }}>
                         <div className="card-header">
                             <h2 className="card-title">Session Trend</h2>
-                            <select className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white">
+                            <select className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white" onClick={(e) => e.stopPropagation()}>
                                 <option>Last 8 months</option>
                                 <option>Last 12 months</option>
                                 <option>This year</option>
@@ -244,7 +244,7 @@ export default function DashboardPage() {
                         </div>
                         <div className="card-body">
                             <div className="billing-grid">
-                                <div className="billing-item">
+                                <div className="billing-item" onClick={() => navigate('/billing')} style={{ cursor: 'pointer' }}>
                                     <div className="billing-item-icon teal">
                                         <CurrencyDollar size={20} weight="fill" />
                                     </div>
@@ -253,7 +253,7 @@ export default function DashboardPage() {
                                         <p className="billing-item-value">${billingData.monthlyRevenue.toLocaleString()}</p>
                                     </div>
                                 </div>
-                                <div className="billing-item">
+                                <div className="billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
                                     <div className="billing-item-icon yellow">
                                         <Receipt size={20} weight="fill" />
                                     </div>
@@ -262,7 +262,7 @@ export default function DashboardPage() {
                                         <p className="billing-item-value">{billingData.pendingClaims}</p>
                                     </div>
                                 </div>
-                                <div className="billing-item">
+                                <div className="billing-item" onClick={() => navigate('/billing?tab=payments')} style={{ cursor: 'pointer' }}>
                                     <div className="billing-item-icon green">
                                         <CheckCircle size={20} weight="fill" />
                                     </div>
@@ -271,7 +271,7 @@ export default function DashboardPage() {
                                         <p className="billing-item-value">{billingData.paidThisMonth}</p>
                                     </div>
                                 </div>
-                                <div className="billing-item">
+                                <div className="billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
                                     <div className="billing-item-icon red">
                                         <Warning size={20} weight="fill" />
                                     </div>
@@ -288,7 +288,7 @@ export default function DashboardPage() {
                 {/* Right: Calendar + Appointments */}
                 <div className="space-y-6">
                     {/* Mini Calendar */}
-                    <div className="card">
+                    <div className="card" onClick={() => navigate('/calendar')} style={{ cursor: 'pointer' }}>
                         <div className="card-body">
                             <p className="mini-calendar-header">February 2026</p>
                             <div className="mini-calendar-grid">
@@ -314,7 +314,12 @@ export default function DashboardPage() {
                         </div>
                         <div className="card-body pt-0">
                             {todayAppointments.map((apt) => (
-                                <div key={apt.id} className="appointment-item">
+                                <div
+                                    key={apt.id}
+                                    className="appointment-item"
+                                    onClick={() => navigate(`/clients/${apt.id}`)}
+                                    style={{ cursor: 'pointer' }}
+                                >
                                     <div className={`appointment-avatar ${apt.color}`}>
                                         {apt.name.split(' ').map(n => n[0]).join('')}
                                     </div>
@@ -349,13 +354,13 @@ export default function DashboardPage() {
                         </thead>
                         <tbody>
                             {pendingNotes.map((note) => (
-                                <tr key={note.id}>
+                                <tr key={note.id} onClick={() => navigate(`/clients/${note.id}`)} style={{ cursor: 'pointer' }}>
                                     <td>
                                         <div className="flex items-center gap-3">
                                             <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-600">
                                                 {note.client.split(' ').map(n => n[0]).join('')}
                                             </div>
-                                            <span className="font-semibold">{note.client}</span>
+                                            <span className="font-semibold text-teal-600 hover:text-teal-700">{note.client}</span>
                                         </div>
                                     </td>
                                     <td className="font-medium">{note.date}</td>
@@ -368,7 +373,7 @@ export default function DashboardPage() {
                                     <td>
                                         <button
                                             className="text-teal-600 font-bold text-sm hover:text-teal-700"
-                                            onClick={() => navigate(`/notes/new?client=${note.client}`)}
+                                            onClick={(e) => { e.stopPropagation(); navigate(`/notes/new?client=${note.client}`); }}
                                         >
                                             Complete
                                         </button>
@@ -389,10 +394,15 @@ export default function DashboardPage() {
                         {authAlerts.map((auth) => {
                             const percent = Math.round((auth.used / auth.total) * 100)
                             return (
-                                <div key={auth.id} className="mb-5 last:mb-0">
+                                <div
+                                    key={auth.id}
+                                    className="mb-5 last:mb-0"
+                                    onClick={() => navigate(`/clients/${auth.id}`)}
+                                    style={{ cursor: 'pointer' }}
+                                >
                                     <div className="flex justify-between items-center mb-2">
                                         <div>
-                                            <p className="font-bold">{auth.client}</p>
+                                            <p className="font-bold text-teal-600 hover:text-teal-700">{auth.client}</p>
                                             <p className="text-xs text-gray-500 font-medium">{auth.service}</p>
                                         </div>
                                         <span className={`text-sm font-bold ${percent >= 80 ? 'text-red-500' : 'text-teal-600'}`}>

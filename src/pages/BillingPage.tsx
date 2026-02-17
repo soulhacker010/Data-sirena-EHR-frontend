@@ -485,7 +485,14 @@ Balance Due: $${(invoice.totalAmount - invoice.paidAmount).toFixed(2)}
                             <CaretDown size={14} weight="bold" className="filter-caret" />
                         </div>
                         <div className="filter-group date-range">
-                            <CalendarBlank size={18} weight="regular" />
+                            <CalendarBlank
+                                size={18}
+                                weight="regular"
+                                onClick={() => {
+                                    const inputs = document.querySelectorAll('.filter-group.date-range input[type="date"]');
+                                    if (inputs[0]) (inputs[0] as HTMLInputElement).showPicker?.();
+                                }}
+                            />
                             <input
                                 type="date"
                                 value={invoiceDateFrom}
@@ -506,14 +513,14 @@ Balance Due: $${(invoice.totalAmount - invoice.paidAmount).toFixed(2)}
                         <table className="data-table">
                             <thead>
                                 <tr>
-                                    <th>Invoice #</th>
-                                    <th>Client</th>
+                                    <th style={{ width: '12%' }}>Invoice #</th>
+                                    <th style={{ width: '18%' }}>Client</th>
                                     <th>Date</th>
                                     <th>Due Date</th>
-                                    <th>Amount</th>
-                                    <th>Paid</th>
-                                    <th>Status</th>
-                                    <th></th>
+                                    <th style={{ textAlign: 'right' }}>Amount</th>
+                                    <th style={{ textAlign: 'right' }}>Paid</th>
+                                    <th style={{ textAlign: 'center' }}>Status</th>
+                                    <th style={{ width: '5%' }}></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -523,9 +530,9 @@ Balance Due: $${(invoice.totalAmount - invoice.paidAmount).toFixed(2)}
                                         <td>{invoice.clientName}</td>
                                         <td>{formatDate(invoice.dateOfService)}</td>
                                         <td>{formatDate(invoice.dueDate)}</td>
-                                        <td><span className="amount">{formatCurrency(invoice.totalAmount)}</span></td>
-                                        <td><span className="amount-paid">{formatCurrency(invoice.paidAmount)}</span></td>
-                                        <td>
+                                        <td style={{ textAlign: 'right' }}><span className="amount">{formatCurrency(invoice.totalAmount)}</span></td>
+                                        <td style={{ textAlign: 'right' }}><span className="amount-paid">{formatCurrency(invoice.paidAmount)}</span></td>
+                                        <td style={{ textAlign: 'center' }}>
                                             <span className={`badge badge-invoice-${invoice.status}`}>
                                                 {invoice.status === 'paid' && <CheckCircle size={12} weight="bold" />}
                                                 {invoice.status === 'overdue' && <Warning size={12} weight="bold" />}
@@ -583,7 +590,17 @@ Balance Due: $${(invoice.totalAmount - invoice.paidAmount).toFixed(2)}
                             <CaretDown size={14} weight="bold" className="filter-caret" />
                         </div>
                         <div className="filter-group date-range">
-                            <CalendarBlank size={18} weight="regular" />
+                            <CalendarBlank
+                                size={18}
+                                weight="regular"
+                                onClick={() => {
+                                    const inputs = document.querySelectorAll('.filter-group.date-range input[type="date"]');
+                                    const claimsTab = document.querySelector('#claims-tab');
+                                    if (claimsTab && inputs[0]) {
+                                        (inputs[0] as HTMLInputElement).showPicker?.();
+                                    }
+                                }}
+                            />
                             <input
                                 type="date"
                                 value={claimDateFrom}
@@ -604,14 +621,14 @@ Balance Due: $${(invoice.totalAmount - invoice.paidAmount).toFixed(2)}
                         <table className="data-table">
                             <thead>
                                 <tr>
-                                    <th>Claim #</th>
-                                    <th>Client</th>
+                                    <th style={{ width: '12%' }}>Claim #</th>
+                                    <th style={{ width: '16%' }}>Client</th>
                                     <th>Payer</th>
                                     <th>Service Date</th>
                                     <th>Submitted</th>
-                                    <th>Amount</th>
-                                    <th>Status</th>
-                                    <th></th>
+                                    <th style={{ textAlign: 'right' }}>Amount</th>
+                                    <th style={{ textAlign: 'center' }}>Status</th>
+                                    <th style={{ width: '5%' }}></th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -622,8 +639,8 @@ Balance Due: $${(invoice.totalAmount - invoice.paidAmount).toFixed(2)}
                                         <td>{claim.payerName}</td>
                                         <td>{formatDate(claim.dateOfService)}</td>
                                         <td>{formatDate(claim.submittedDate)}</td>
-                                        <td><span className="amount">{formatCurrency(claim.amount)}</span></td>
-                                        <td>
+                                        <td style={{ textAlign: 'right' }}><span className="amount">{formatCurrency(claim.amount)}</span></td>
+                                        <td style={{ textAlign: 'center' }}>
                                             <span className={`badge badge-claim-${claim.status}`}>
                                                 {claim.status === 'paid' && <CheckCircle size={12} weight="bold" />}
                                                 {claim.status === 'denied' && <XCircle size={12} weight="bold" />}
@@ -668,11 +685,11 @@ Balance Due: $${(invoice.totalAmount - invoice.paidAmount).toFixed(2)}
                         <table className="data-table">
                             <thead>
                                 <tr>
-                                    <th>Invoice #</th>
-                                    <th>Client</th>
-                                    <th>Amount</th>
+                                    <th style={{ width: '12%' }}>Invoice #</th>
+                                    <th style={{ width: '20%' }}>Client</th>
+                                    <th style={{ textAlign: 'right' }}>Amount</th>
                                     <th>Date</th>
-                                    <th>Method</th>
+                                    <th style={{ textAlign: 'center' }}>Method</th>
                                     <th>Reference</th>
                                 </tr>
                             </thead>
@@ -761,11 +778,11 @@ Balance Due: $${(invoice.totalAmount - invoice.paidAmount).toFixed(2)}
                             <table className="data-table">
                                 <thead>
                                     <tr>
-                                        <th>Invoice #</th>
-                                        <th>Client</th>
+                                        <th style={{ width: '15%' }}>Invoice #</th>
+                                        <th style={{ width: '25%' }}>Client</th>
                                         <th>Due Date</th>
-                                        <th>Days Overdue</th>
-                                        <th>Balance</th>
+                                        <th style={{ textAlign: 'center' }}>Days Overdue</th>
+                                        <th style={{ textAlign: 'right' }}>Balance</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -776,8 +793,8 @@ Balance Due: $${(invoice.totalAmount - invoice.paidAmount).toFixed(2)}
                                                 <td><span className="invoice-number">{inv.invoiceNumber}</span></td>
                                                 <td>{inv.clientName}</td>
                                                 <td>{formatDate(inv.dueDate)}</td>
-                                                <td><span className={`days-overdue ${daysOverdue > 60 ? 'critical' : daysOverdue > 30 ? 'warning' : ''}`}>{daysOverdue} days</span></td>
-                                                <td><span className="amount">{formatCurrency(inv.totalAmount - inv.paidAmount)}</span></td>
+                                                <td style={{ textAlign: 'center' }}><span className={`days-overdue ${daysOverdue > 60 ? 'critical' : daysOverdue > 30 ? 'warning' : ''}`}>{daysOverdue} days</span></td>
+                                                <td style={{ textAlign: 'right' }}><span className="amount">{formatCurrency(inv.totalAmount - inv.paidAmount)}</span></td>
                                             </tr>
                                         )
                                     })}
@@ -823,11 +840,11 @@ Balance Due: $${(invoice.totalAmount - invoice.paidAmount).toFixed(2)}
                             <table className="items-table">
                                 <thead>
                                     <tr>
-                                        <th>CPT Code</th>
-                                        <th>Description</th>
-                                        <th>Units</th>
-                                        <th>Rate</th>
-                                        <th>Amount</th>
+                                        <th style={{ width: '15%' }}>CPT Code</th>
+                                        <th style={{ width: '35%' }}>Description</th>
+                                        <th style={{ textAlign: 'center' }}>Units</th>
+                                        <th style={{ textAlign: 'right' }}>Rate</th>
+                                        <th style={{ textAlign: 'right' }}>Amount</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -835,9 +852,9 @@ Balance Due: $${(invoice.totalAmount - invoice.paidAmount).toFixed(2)}
                                         <tr key={item.id}>
                                             <td>{item.cptCode}</td>
                                             <td>{item.description}</td>
-                                            <td>{item.units}</td>
-                                            <td>{formatCurrency(item.rate)}</td>
-                                            <td>{formatCurrency(item.amount)}</td>
+                                            <td style={{ textAlign: 'center' }}>{item.units}</td>
+                                            <td style={{ textAlign: 'right' }}>{formatCurrency(item.rate)}</td>
+                                            <td style={{ textAlign: 'right' }}>{formatCurrency(item.amount)}</td>
                                         </tr>
                                     ))}
                                 </tbody>

@@ -8,7 +8,8 @@ import {
     ChartBar,
     Clock,
     Users,
-    CalendarCheck
+    CalendarCheck,
+    CalendarBlank
 } from '@phosphor-icons/react'
 
 // Mock session summary data
@@ -86,8 +87,16 @@ export default function SessionSummaryReportPage() {
 
             {/* Filters */}
             <div className="report-filters">
-                <div className="filter-group">
+                <div className="filter-group date-range" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <label className="filter-label">From:</label>
+                    <CalendarBlank
+                        size={18}
+                        weight="regular"
+                        onClick={() => {
+                            const input = document.querySelector('.report-filters input[type="date"]') as HTMLInputElement;
+                            if (input) input.showPicker?.();
+                        }}
+                    />
                     <input
                         type="date"
                         value={dateFrom}
@@ -95,8 +104,16 @@ export default function SessionSummaryReportPage() {
                         className="form-input-basic filter-date"
                     />
                 </div>
-                <div className="filter-group">
+                <div className="filter-group date-range" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <label className="filter-label">To:</label>
+                    <CalendarBlank
+                        size={18}
+                        weight="regular"
+                        onClick={() => {
+                            const inputs = document.querySelectorAll('.report-filters input[type="date"]');
+                            if (inputs[1]) (inputs[1] as HTMLInputElement).showPicker?.();
+                        }}
+                    />
                     <input
                         type="date"
                         value={dateTo}
@@ -167,22 +184,22 @@ export default function SessionSummaryReportPage() {
                 <table className="data-table">
                     <thead>
                         <tr>
-                            <th>Provider</th>
-                            <th>Sessions</th>
-                            <th>Hours</th>
-                            <th>Units</th>
-                            <th>Clients</th>
-                            <th>Note Completion</th>
+                            <th style={{ width: '25%' }}>Provider</th>
+                            <th style={{ textAlign: 'center' }}>Sessions</th>
+                            <th style={{ textAlign: 'center' }}>Hours</th>
+                            <th style={{ textAlign: 'center' }}>Units</th>
+                            <th style={{ textAlign: 'center' }}>Clients</th>
+                            <th style={{ width: '22%' }}>Note Completion</th>
                         </tr>
                     </thead>
                     <tbody>
                         {mockProviderBreakdown.map(provider => (
                             <tr key={provider.provider}>
                                 <td><strong>{provider.provider}</strong></td>
-                                <td>{provider.sessions}</td>
-                                <td>{provider.hours}</td>
-                                <td>{provider.units}</td>
-                                <td>{provider.clients}</td>
+                                <td style={{ textAlign: 'center' }}>{provider.sessions}</td>
+                                <td style={{ textAlign: 'center' }}>{provider.hours}</td>
+                                <td style={{ textAlign: 'center' }}>{provider.units}</td>
+                                <td style={{ textAlign: 'center' }}>{provider.clients}</td>
                                 <td>
                                     <div className="completion-bar-wrapper">
                                         <div className="completion-bar-container">
@@ -206,12 +223,12 @@ export default function SessionSummaryReportPage() {
                 <table className="data-table">
                     <thead>
                         <tr>
-                            <th>Code</th>
-                            <th>Service Name</th>
-                            <th>Sessions</th>
-                            <th>Hours</th>
-                            <th>Units</th>
-                            <th>% of Total</th>
+                            <th style={{ width: '10%' }}>Code</th>
+                            <th style={{ width: '30%' }}>Service Name</th>
+                            <th style={{ textAlign: 'center' }}>Sessions</th>
+                            <th style={{ textAlign: 'center' }}>Hours</th>
+                            <th style={{ textAlign: 'center' }}>Units</th>
+                            <th style={{ textAlign: 'center' }}>% of Total</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -219,10 +236,10 @@ export default function SessionSummaryReportPage() {
                             <tr key={service.code}>
                                 <td><span className="service-code-badge">{service.code}</span></td>
                                 <td>{service.name}</td>
-                                <td>{service.sessions}</td>
-                                <td>{service.hours}</td>
-                                <td>{service.units}</td>
-                                <td>
+                                <td style={{ textAlign: 'center' }}>{service.sessions}</td>
+                                <td style={{ textAlign: 'center' }}>{service.hours}</td>
+                                <td style={{ textAlign: 'center' }}>{service.units}</td>
+                                <td style={{ textAlign: 'center' }}>
                                     {Math.round((service.sessions / mockSessionData.totalSessions) * 100)}%
                                 </td>
                             </tr>

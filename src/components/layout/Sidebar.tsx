@@ -9,7 +9,6 @@ import {
     Bell,
     Gear,
     SignOut,
-    Butterfly,
     UsersThree,
     ClockCounterClockwise
 } from '@phosphor-icons/react'
@@ -50,8 +49,7 @@ export default function Sidebar() {
         <aside className="sidebar">
             {/* Logo */}
             <div className="sidebar-logo">
-                <Butterfly size={28} weight="duotone" className="text-teal-500" />
-                <span className="sidebar-logo-text">Sirena Health</span>
+                <img src="/images/EHRlogo.png" alt="Sirena Health" className="sidebar-logo-img" />
             </div>
 
             {/* Main Menu */}

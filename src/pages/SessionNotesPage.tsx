@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { useSearchParams } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { PageSkeleton } from '../components/ui'
 import { Modal, ConfirmDialog, ActionMenu, EmptyState } from '../components/ui'
+import { notesApi, clientsApi, usersApi } from '../api'
+import type { SessionNote, Client, User } from '../types'
 import {
     MagnifyingGlass,
     Plus,
@@ -15,7 +17,6 @@ import {
     Eye,
     Trash,
     FileText,
-
     CalendarBlank,
     CloudCheck,
     Spinner,
@@ -23,35 +24,7 @@ import {
     UserPlus
 } from '@phosphor-icons/react'
 
-// Session Note type
-interface SessionNote {
-    id: string
-    appointmentId: string
-    clientId: number
-    clientName: string
-    providerId: number
-    providerName: string
-    sessionDate: string
-    sessionType: 'aba_session' | 'parent_training' | 'assessment' | 'supervision'
-    status: 'draft' | 'completed' | 'signed' | 'pending_cosign'
-    duration: number
-    cptCode: string
-    units: number
-    createdAt: string
-    updatedAt: string
-    signedAt?: string
-    signedBy?: string
-    coSignRequested?: boolean
-    coSignedBy?: string
-    coSignedAt?: string
-    templateId?: string
-    objectives?: string
-    interventions?: string
-    clientResponse?: string
-    notes?: string
-}
-
-// Note templates
+// Note templates (static reference data)
 const noteTemplates = [
     { id: 'blank', name: 'Blank Template', objectives: '', interventions: '', clientResponse: '' },
     { id: 'aba_standard', name: 'ABA Standard Session', objectives: 'Work on [skill area] using ABA techniques', interventions: 'DTT, NET, prompting hierarchy, reinforcement', clientResponse: 'Client demonstrated [percentage]% accuracy on target skills' },
@@ -60,142 +33,9 @@ const noteTemplates = [
     { id: 'supervision', name: 'Supervision Session', objectives: 'Provide supervision for [RBT name]', interventions: 'Direct observation, feedback, competency review', clientResponse: 'Supervisee demonstrated competency in observed skills' },
 ]
 
-// Mock session notes data
-const mockNotes: SessionNote[] = [
-    {
-        id: '1',
-        appointmentId: '6',
-        clientId: 1,
-        clientName: 'Sarah Johnson',
-        providerId: 1,
-        providerName: 'Dr. Smith',
-        sessionDate: '2026-02-07',
-        sessionType: 'aba_session',
-        status: 'signed',
-        duration: 120,
-        cptCode: '97153',
-        units: 8,
-        createdAt: '2026-02-07T16:30:00',
-        updatedAt: '2026-02-07T17:00:00',
-        signedAt: '2026-02-07T17:05:00',
-        signedBy: 'Dr. Smith',
-        objectives: 'Work on communication skills and following instructions',
-        interventions: 'DTT, natural environment teaching',
-        clientResponse: 'Client responded well to interventions, achieved 80% accuracy',
-        notes: 'Great session overall. Client made progress on imitation skills.'
-    },
-    {
-        id: '2',
-        appointmentId: '8',
-        clientId: 2,
-        clientName: 'Michael Chen',
-        providerId: 1,
-        providerName: 'Dr. Smith',
-        sessionDate: '2026-02-08',
-        sessionType: 'parent_training',
-        status: 'completed',
-        duration: 90,
-        cptCode: '97156',
-        units: 6,
-        createdAt: '2026-02-08T11:45:00',
-        updatedAt: '2026-02-08T12:00:00',
-        objectives: 'Train parent on prompting strategies',
-        interventions: 'Modeling, role-play, feedback',
-        clientResponse: 'Parent demonstrated understanding of techniques',
-        notes: 'Parent training on implementing DTT at home.'
-    },
-    {
-        id: '3',
-        appointmentId: '5',
-        clientId: 5,
-        clientName: 'Lisa Thompson',
-        providerId: 3,
-        providerName: 'Dr. Martinez',
-        sessionDate: '2026-02-06',
-        sessionType: 'assessment',
-        status: 'draft',
-        duration: 180,
-        cptCode: '97151',
-        units: 12,
-        createdAt: '2026-02-06T12:30:00',
-        updatedAt: '2026-02-06T12:30:00',
-        objectives: 'Complete initial assessment',
-        interventions: 'VB-MAPP, ABLLS-R assessments'
-    },
-    {
-        id: '4',
-        appointmentId: '3',
-        clientId: 3,
-        clientName: 'Emily Davis',
-        providerId: 2,
-        providerName: 'Dr. Williams',
-        sessionDate: '2026-02-04',
-        sessionType: 'aba_session',
-        status: 'signed',
-        duration: 60,
-        cptCode: '97153',
-        units: 4,
-        createdAt: '2026-02-04T11:15:00',
-        updatedAt: '2026-02-04T11:30:00',
-        signedAt: '2026-02-04T11:35:00',
-        signedBy: 'Dr. Williams',
-        objectives: 'Social skills and peer interaction',
-        interventions: 'Social stories, role-play',
-        clientResponse: 'Good engagement with social stories',
-        notes: 'Emily showed improvement in turn-taking during activities.'
-    },
-    {
-        id: '5',
-        appointmentId: '1',
-        clientId: 1,
-        clientName: 'Sarah Johnson',
-        providerId: 1,
-        providerName: 'Dr. Smith',
-        sessionDate: '2026-02-03',
-        sessionType: 'aba_session',
-        status: 'signed',
-        duration: 120,
-        cptCode: '97153',
-        units: 8,
-        createdAt: '2026-02-03T11:30:00',
-        updatedAt: '2026-02-03T11:45:00',
-        signedAt: '2026-02-03T11:50:00',
-        signedBy: 'Dr. Smith',
-        objectives: 'Work on daily living skills',
-        interventions: 'Chaining, task analysis',
-        clientResponse: 'Completed 4/5 steps independently',
-        notes: 'Continuing to work on hand washing routine.'
-    }
-]
-
-// Mock providers and clients for filters
-const providers = [
-    { id: 0, name: 'All Providers' },
-    { id: 1, name: 'Dr. Smith' },
-    { id: 2, name: 'Dr. Williams' },
-    { id: 3, name: 'Dr. Martinez' },
-]
-
-const clients = [
-    { id: 0, name: 'All Clients' },
-    { id: 1, name: 'Sarah Johnson' },
-    { id: 2, name: 'Michael Chen' },
-    { id: 3, name: 'Emily Davis' },
-    { id: 4, name: 'James Wilson' },
-    { id: 5, name: 'Lisa Thompson' },
-    { id: 6, name: 'David Brown' },
-]
-
-// Session type labels
-const sessionTypeLabels: Record<string, string> = {
-    aba_session: 'ABA Session',
-    parent_training: 'Parent Training',
-    assessment: 'Assessment',
-    supervision: 'Supervision'
-}
-
 // Format date
-const formatDate = (date: string) => {
+const formatDate = (date: string | undefined) => {
+    if (!date) return '—'
     return new Date(date).toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',
@@ -203,29 +43,19 @@ const formatDate = (date: string) => {
     })
 }
 
-// Format duration
-const formatDuration = (minutes: number) => {
-    const hours = Math.floor(minutes / 60)
-    const mins = minutes % 60
-    if (hours === 0) return `${mins}m`
-    if (mins === 0) return `${hours}h`
-    return `${hours}h ${mins}m`
-}
-
 export default function SessionNotesPage() {
     const [_searchParams] = useSearchParams()
     const [isLoading, setIsLoading] = useState(true)
+    const [notes, setNotes] = useState<SessionNote[]>([])
+    const [totalCount, setTotalCount] = useState(0)
+    const [clientsList, setClientsList] = useState<Client[]>([])
+    const [providersList, setProvidersList] = useState<User[]>([])
 
-    useEffect(() => {
-        const timer = setTimeout(() => setIsLoading(false), 800)
-        return () => clearTimeout(timer)
-    }, [])
-
-    const [notes, setNotes] = useState<SessionNote[]>(mockNotes)
+    // Filters
     const [searchQuery, setSearchQuery] = useState('')
     const [statusFilter, setStatusFilter] = useState('all')
-    const [providerFilter, setProviderFilter] = useState(0)
-    const [clientFilter, setClientFilter] = useState(0)
+    const [providerFilter, setProviderFilter] = useState('')
+    const [clientFilter, setClientFilter] = useState('')
     const [dateFrom, setDateFrom] = useState('')
     const [dateTo, setDateTo] = useState('')
 
@@ -237,6 +67,8 @@ export default function SessionNotesPage() {
     const [isCoSignModalOpen, setIsCoSignModalOpen] = useState(false)
     const [selectedNote, setSelectedNote] = useState<SessionNote | null>(null)
     const [isDeleting, setIsDeleting] = useState(false)
+    const [coSignProviderId, setCoSignProviderId] = useState('')
+    const [coSignMessage, setCoSignMessage] = useState('')
 
     // Auto-save state
     const [isSaving, setIsSaving] = useState(false)
@@ -251,16 +83,67 @@ export default function SessionNotesPage() {
     const [formData, setFormData] = useState({
         templateId: 'blank',
         clientId: '',
-        sessionType: 'aba_session',
         sessionDate: '',
-        duration: '120',
         cptCode: '97153',
-        units: '8',
         objectives: '',
         interventions: '',
         clientResponse: '',
         notes: ''
     })
+
+    // Fetch notes
+    const fetchNotes = useCallback(async () => {
+        try {
+            const params: Record<string, string | number> = {}
+            if (statusFilter !== 'all') params.status = statusFilter
+            if (providerFilter) params.provider_id = providerFilter
+            if (clientFilter) params.client_id = clientFilter
+            if (dateFrom) params.start_date = dateFrom
+            if (dateTo) params.end_date = dateTo
+            const response = await notesApi.getAll(params)
+            setNotes(response.results)
+            setTotalCount(response.count)
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to load notes')
+        }
+    }, [statusFilter, providerFilter, clientFilter, dateFrom, dateTo])
+
+    // Initial data load
+    useEffect(() => {
+        const loadData = async () => {
+            setIsLoading(true)
+            try {
+                const [clientsRes, providersRes] = await Promise.all([
+                    clientsApi.getAll({ page_size: 500 }),
+                    usersApi.getAll({ role: 'provider', page_size: 500 }),
+                ])
+                setClientsList(clientsRes.results)
+                setProvidersList(providersRes.results)
+            } catch (err: any) {
+                toast.error('Failed to load filter data')
+            } finally {
+                setIsLoading(false)
+            }
+        }
+        loadData()
+    }, [])
+
+    // Fetch notes when filters change
+    useEffect(() => {
+        if (!isLoading) {
+            fetchNotes()
+        }
+    }, [fetchNotes, isLoading])
+
+    // Filter notes by search locally (API handles other filters)
+    const filteredNotes = notes.filter(note => {
+        if (!searchQuery) return true
+        const q = searchQuery.toLowerCase()
+        return (
+            (note.client_name || '').toLowerCase().includes(q) ||
+            (note.provider_name || '').toLowerCase().includes(q)
+        )
+    }).sort((a, b) => new Date(b.session_date || b.created_at).getTime() - new Date(a.session_date || a.created_at).getTime())
 
     // Handle template change
     const handleTemplateChange = (templateId: string) => {
@@ -278,43 +161,31 @@ export default function SessionNotesPage() {
 
     // Auto-save effect
     useEffect(() => {
-        if (isNoteEditorOpen && formData.clientId) {
-            if (autoSaveTimer.current) {
-                clearTimeout(autoSaveTimer.current)
-            }
-            autoSaveTimer.current = setTimeout(() => {
+        if (isNoteEditorOpen && selectedNote && formData.clientId) {
+            if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
+            autoSaveTimer.current = setTimeout(async () => {
                 setIsSaving(true)
-                // Simulate auto-save
-                setTimeout(() => {
-                    setIsSaving(false)
+                try {
+                    await notesApi.update(selectedNote.id, {
+                        note_data: {
+                            objectives: formData.objectives,
+                            interventions: formData.interventions,
+                            client_response: formData.clientResponse,
+                            notes: formData.notes,
+                        }
+                    })
                     setLastSaved(new Date())
-                }, 500)
+                } catch {
+                    // Silent fail for auto-save
+                } finally {
+                    setIsSaving(false)
+                }
             }, 3000)
         }
         return () => {
-            if (autoSaveTimer.current) {
-                clearTimeout(autoSaveTimer.current)
-            }
+            if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
         }
-    }, [formData, isNoteEditorOpen])
-
-    // Filter notes
-    const filteredNotes = notes.filter(note => {
-        const matchesSearch =
-            note.clientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            note.providerName.toLowerCase().includes(searchQuery.toLowerCase())
-
-        const matchesStatus = statusFilter === 'all' || note.status === statusFilter
-        const matchesProvider = providerFilter === 0 || note.providerId === providerFilter
-        const matchesClient = clientFilter === 0 || note.clientId === clientFilter
-
-        // Date range filter
-        const noteDate = new Date(note.sessionDate)
-        const matchesDateFrom = !dateFrom || noteDate >= new Date(dateFrom)
-        const matchesDateTo = !dateTo || noteDate <= new Date(dateTo)
-
-        return matchesSearch && matchesStatus && matchesProvider && matchesClient && matchesDateFrom && matchesDateTo
-    }).sort((a, b) => new Date(b.sessionDate).getTime() - new Date(a.sessionDate).getTime())
+    }, [formData, isNoteEditorOpen, selectedNote])
 
     // Handlers
     const handleNewNote = () => {
@@ -323,11 +194,8 @@ export default function SessionNotesPage() {
         setFormData({
             templateId: 'blank',
             clientId: '',
-            sessionType: 'aba_session',
             sessionDate: new Date().toISOString().split('T')[0],
-            duration: '120',
             cptCode: '97153',
-            units: '8',
             objectives: '',
             interventions: '',
             clientResponse: '',
@@ -343,18 +211,16 @@ export default function SessionNotesPage() {
 
     const handleEditNote = (note: SessionNote) => {
         setSelectedNote(note)
+        const nd = note.note_data || {}
         setFormData({
-            templateId: 'blank',
-            clientId: String(note.clientId),
-            sessionType: note.sessionType,
-            sessionDate: note.sessionDate,
-            duration: String(note.duration),
-            cptCode: note.cptCode,
-            units: String(note.units),
-            objectives: note.objectives || '',
-            interventions: note.interventions || '',
-            clientResponse: note.clientResponse || '',
-            notes: note.notes || ''
+            templateId: note.template_id || 'blank',
+            clientId: note.client_id,
+            sessionDate: note.session_date || '',
+            cptCode: note.service_code || '97153',
+            objectives: (nd.objectives as string) || '',
+            interventions: (nd.interventions as string) || '',
+            clientResponse: (nd.client_response as string) || '',
+            notes: (nd.notes as string) || ''
         })
         setIsViewModalOpen(false)
         setIsNoteEditorOpen(true)
@@ -369,62 +235,52 @@ export default function SessionNotesPage() {
     const handleConfirmDelete = async () => {
         if (!selectedNote) return
         setIsDeleting(true)
-        await new Promise(resolve => setTimeout(resolve, 500))
-        setNotes(prev => prev.filter(n => n.id !== selectedNote.id))
-        setIsDeleting(false)
-        setIsDeleteDialogOpen(false)
-        setSelectedNote(null)
-        toast.success('Note deleted successfully')
+        try {
+            await notesApi.delete(selectedNote.id)
+            toast.success('Note deleted successfully')
+            fetchNotes()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to delete note')
+        } finally {
+            setIsDeleting(false)
+            setIsDeleteDialogOpen(false)
+            setSelectedNote(null)
+        }
     }
 
-    const handleSaveDraft = () => {
-        const client = clients.find(c => c.id === Number(formData.clientId))
-
-        if (selectedNote) {
-            setNotes(prev => prev.map(n =>
-                n.id === selectedNote.id
-                    ? {
-                        ...n,
-                        sessionDate: formData.sessionDate,
-                        sessionType: formData.sessionType as SessionNote['sessionType'],
-                        duration: Number(formData.duration),
-                        cptCode: formData.cptCode,
-                        units: Number(formData.units),
-                        objectives: formData.objectives,
-                        interventions: formData.interventions,
-                        clientResponse: formData.clientResponse,
-                        notes: formData.notes,
-                        updatedAt: new Date().toISOString()
-                    }
-                    : n
-            ))
-        } else {
-            const newNote: SessionNote = {
-                id: String(Date.now()),
-                appointmentId: '',
-                clientId: Number(formData.clientId),
-                clientName: client?.name || 'Unknown',
-                providerId: 1,
-                providerName: 'Dr. Smith',
-                sessionDate: formData.sessionDate,
-                sessionType: formData.sessionType as SessionNote['sessionType'],
-                status: 'draft',
-                duration: Number(formData.duration),
-                cptCode: formData.cptCode,
-                units: Number(formData.units),
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
+    const handleSaveDraft = async () => {
+        if (isSaving) return
+        setIsSaving(true)
+        try {
+            const noteData = {
                 objectives: formData.objectives,
                 interventions: formData.interventions,
-                clientResponse: formData.clientResponse,
-                notes: formData.notes
+                client_response: formData.clientResponse,
+                notes: formData.notes,
             }
-            setNotes(prev => [newNote, ...prev])
-        }
 
-        setIsNoteEditorOpen(false)
-        setSelectedNote(null)
-        toast.success(selectedNote ? 'Note updated' : 'Draft saved')
+            if (selectedNote) {
+                await notesApi.update(selectedNote.id, {
+                    note_data: noteData,
+                })
+                toast.success('Note updated')
+            } else {
+                await notesApi.create({
+                    client_id: formData.clientId,
+                    template_id: formData.templateId !== 'blank' ? formData.templateId : undefined,
+                    note_data: noteData,
+                    service_code: formData.cptCode,
+                })
+                toast.success('Draft saved')
+            }
+            setIsNoteEditorOpen(false)
+            setSelectedNote(null)
+            fetchNotes()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to save note')
+        } finally {
+            setIsSaving(false)
+        }
     }
 
     const handleSignClick = () => {
@@ -433,24 +289,52 @@ export default function SessionNotesPage() {
         setIsSignModalOpen(true)
     }
 
-    const handleConfirmSign = () => {
-        if (selectedNote) {
-            setNotes(prev => prev.map(n =>
-                n.id === selectedNote.id
-                    ? {
-                        ...n,
-                        status: 'signed' as const,
-                        signedAt: new Date().toISOString(),
-                        signedBy: 'Dr. Smith',
-                        updatedAt: new Date().toISOString()
-                    }
-                    : n
-            ))
+    const handleConfirmSign = async () => {
+        if (isSaving) return
+        if (!selectedNote) return
+        setIsSaving(true)
+        try {
+            const canvas = signatureCanvasRef.current
+            const signatureData = canvas ? canvas.toDataURL() : ''
+            await notesApi.sign(selectedNote.id, { signature_data: signatureData })
+            toast.success('Note signed successfully')
+            fetchNotes()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to sign note')
+        } finally {
+            setIsSaving(false)
+            setIsSignModalOpen(false)
+            setSelectedNote(null)
         }
-        setIsSignModalOpen(false)
-        setSelectedNote(null)
-        toast.success('Note signed successfully')
     }
+
+    const handleRequestCoSign = async () => {
+        if (isSaving) return
+        if (!selectedNote || !coSignProviderId) return
+        setIsSaving(true)
+        try {
+            await notesApi.requestCoSign(selectedNote.id, {
+                supervisor_id: coSignProviderId,
+                message: coSignMessage || undefined,
+            })
+            toast.success('Co-sign request sent')
+            fetchNotes()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to send co-sign request')
+        } finally {
+            setIsSaving(false)
+            setIsCoSignModalOpen(false)
+            setSelectedNote(null)
+            setCoSignProviderId('')
+            setCoSignMessage('')
+        }
+    }
+
+    // Note data helpers
+    const getNoteObjectives = (note: SessionNote) => (note.note_data?.objectives as string) || ''
+    const getNoteInterventions = (note: SessionNote) => (note.note_data?.interventions as string) || ''
+    const getNoteClientResponse = (note: SessionNote) => (note.note_data?.client_response as string) || ''
+    const getNoteAdditionalNotes = (note: SessionNote) => (note.note_data?.notes as string) || ''
 
     // Generate action menu items
     const getNoteActions = (note: SessionNote) => {
@@ -462,7 +346,7 @@ export default function SessionNotesPage() {
             }
         ]
 
-        if (note.status !== 'signed') {
+        if (note.status !== 'signed' && note.status !== 'co_signed') {
             actions.push({
                 label: 'Edit Note',
                 icon: <PencilSimple size={16} weight="regular" />,
@@ -501,7 +385,7 @@ export default function SessionNotesPage() {
             <div className="page-header">
                 <div>
                     <h1 className="page-title">Session Notes</h1>
-                    <p className="page-subtitle">{notes.length} total notes</p>
+                    <p className="page-subtitle">{totalCount} total notes</p>
                 </div>
                 <button className="btn-primary" onClick={handleNewNote}>
                     <Plus size={18} weight="bold" />
@@ -511,7 +395,6 @@ export default function SessionNotesPage() {
 
             {/* Filters Bar */}
             <div className="filters-bar">
-                {/* Search */}
                 <div className="search-input">
                     <MagnifyingGlass size={18} weight="regular" className="search-icon" />
                     <input
@@ -522,7 +405,6 @@ export default function SessionNotesPage() {
                     />
                 </div>
 
-                {/* Status Filter */}
                 <div className="filter-group">
                     <FunnelSimple size={18} weight="regular" />
                     <select
@@ -534,48 +416,41 @@ export default function SessionNotesPage() {
                         <option value="draft">Draft</option>
                         <option value="completed">Completed</option>
                         <option value="signed">Signed</option>
+                        <option value="co_signed">Co-signed</option>
                     </select>
                     <CaretDown size={14} weight="bold" className="filter-caret" />
                 </div>
 
-                {/* Provider Filter */}
                 <div className="filter-group">
                     <select
                         value={providerFilter}
-                        onChange={(e) => setProviderFilter(Number(e.target.value))}
+                        onChange={(e) => setProviderFilter(e.target.value)}
                         className="filter-select"
                     >
-                        {providers.map(p => (
-                            <option key={p.id} value={p.id}>{p.name}</option>
+                        <option value="">All Providers</option>
+                        {providersList.map(p => (
+                            <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
                         ))}
                     </select>
                     <CaretDown size={14} weight="bold" className="filter-caret" />
                 </div>
 
-                {/* Client Filter */}
                 <div className="filter-group">
                     <select
                         value={clientFilter}
-                        onChange={(e) => setClientFilter(Number(e.target.value))}
+                        onChange={(e) => setClientFilter(e.target.value)}
                         className="filter-select"
                     >
-                        {clients.map(c => (
-                            <option key={c.id} value={c.id}>{c.name}</option>
+                        <option value="">All Clients</option>
+                        {clientsList.map(c => (
+                            <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
                         ))}
                     </select>
                     <CaretDown size={14} weight="bold" className="filter-caret" />
                 </div>
 
-                {/* Date Range Filter */}
                 <div className="filter-group date-range">
-                    <CalendarBlank
-                        size={18}
-                        weight="regular"
-                        onClick={() => {
-                            const input = document.querySelector('.filter-group.date-range input[type="date"]') as HTMLInputElement;
-                            if (input) input.showPicker?.();
-                        }}
-                    />
+                    <CalendarBlank size={18} weight="regular" />
                     <input
                         type="date"
                         value={dateFrom}
@@ -600,10 +475,9 @@ export default function SessionNotesPage() {
                     <thead>
                         <tr>
                             <th>Client</th>
-                            <th>Session Type</th>
                             <th>Date</th>
                             <th>Provider</th>
-                            <th>Duration</th>
+                            <th>CPT Code</th>
                             <th>Status</th>
                             <th></th>
                         </tr>
@@ -614,37 +488,30 @@ export default function SessionNotesPage() {
                                 <td>
                                     <div className="client-cell">
                                         <div className="client-avatar">
-                                            {note.clientName.split(' ').map(n => n[0]).join('')}
+                                            {(note.client_name || '??').split(' ').map(n => n[0]).join('')}
                                         </div>
                                         <div className="client-info">
-                                            <p className="client-name">{note.clientName}</p>
-                                            <p className="client-meta">{note.cptCode} · {note.units} units</p>
+                                            <p className="client-name">{note.client_name || 'Unknown'}</p>
+                                            <p className="client-meta">{note.service_code || '—'}</p>
                                         </div>
                                     </div>
                                 </td>
                                 <td>
-                                    <span className={`session-type-badge ${note.sessionType}`}>
-                                        {sessionTypeLabels[note.sessionType]}
-                                    </span>
+                                    <span className="date-text">{formatDate(note.session_date || note.created_at)}</span>
                                 </td>
                                 <td>
-                                    <span className="date-text">{formatDate(note.sessionDate)}</span>
+                                    <span>{note.provider_name || '—'}</span>
                                 </td>
                                 <td>
-                                    <span>{note.providerName}</span>
-                                </td>
-                                <td>
-                                    <span className="duration-text">
-                                        <Clock size={14} weight="regular" />
-                                        {formatDuration(note.duration)}
-                                    </span>
+                                    <span>{note.service_code || '—'}</span>
                                 </td>
                                 <td>
                                     <span className={`badge badge-${note.status}`}>
                                         {note.status === 'draft' && <PencilSimple size={12} weight="bold" />}
                                         {note.status === 'completed' && <Clock size={12} weight="bold" />}
                                         {note.status === 'signed' && <CheckCircle size={12} weight="bold" />}
-                                        {note.status.charAt(0).toUpperCase() + note.status.slice(1)}
+                                        {note.status === 'co_signed' && <CheckCircle size={12} weight="bold" />}
+                                        {note.status.charAt(0).toUpperCase() + note.status.slice(1).replace('_', ' ')}
                                     </span>
                                 </td>
                                 <td onClick={(e) => e.stopPropagation()}>
@@ -655,7 +522,6 @@ export default function SessionNotesPage() {
                     </tbody>
                 </table>
 
-                {/* Empty State */}
                 {filteredNotes.length === 0 && (
                     <EmptyState
                         variant={searchQuery || statusFilter !== 'all' ? 'no-results' : 'no-data'}
@@ -682,73 +548,76 @@ export default function SessionNotesPage() {
                         <div className="note-view-header">
                             <div className="note-view-client">
                                 <div className="note-avatar large">
-                                    {selectedNote.clientName.split(' ').map(n => n[0]).join('')}
+                                    {(selectedNote.client_name || '??').split(' ').map(n => n[0]).join('')}
                                 </div>
                                 <div>
-                                    <h3>{selectedNote.clientName}</h3>
-                                    <p>{sessionTypeLabels[selectedNote.sessionType]} · {formatDate(selectedNote.sessionDate)}</p>
+                                    <h3>{selectedNote.client_name || 'Unknown'}</h3>
+                                    <p>{formatDate(selectedNote.session_date || selectedNote.created_at)}</p>
                                 </div>
                             </div>
                             <span className={`badge badge-${selectedNote.status}`}>
-                                {selectedNote.status.charAt(0).toUpperCase() + selectedNote.status.slice(1)}
+                                {selectedNote.status.charAt(0).toUpperCase() + selectedNote.status.slice(1).replace('_', ' ')}
                             </span>
                         </div>
 
                         <div className="note-view-meta">
                             <div className="meta-item">
                                 <span className="meta-label">Provider</span>
-                                <span className="meta-value">{selectedNote.providerName}</span>
-                            </div>
-                            <div className="meta-item">
-                                <span className="meta-label">Duration</span>
-                                <span className="meta-value">{formatDuration(selectedNote.duration)}</span>
+                                <span className="meta-value">{selectedNote.provider_name || '—'}</span>
                             </div>
                             <div className="meta-item">
                                 <span className="meta-label">CPT Code</span>
-                                <span className="meta-value">{selectedNote.cptCode}</span>
+                                <span className="meta-value">{selectedNote.service_code || '—'}</span>
                             </div>
                             <div className="meta-item">
-                                <span className="meta-label">Units</span>
-                                <span className="meta-value">{selectedNote.units}</span>
+                                <span className="meta-label">Version</span>
+                                <span className="meta-value">{selectedNote.version}</span>
                             </div>
                         </div>
 
                         <div className="note-view-content">
-                            {selectedNote.objectives && (
+                            {getNoteObjectives(selectedNote) && (
                                 <div className="note-section">
                                     <h4>Session Objectives</h4>
-                                    <p>{selectedNote.objectives}</p>
+                                    <p>{getNoteObjectives(selectedNote)}</p>
                                 </div>
                             )}
-                            {selectedNote.interventions && (
+                            {getNoteInterventions(selectedNote) && (
                                 <div className="note-section">
                                     <h4>Interventions Used</h4>
-                                    <p>{selectedNote.interventions}</p>
+                                    <p>{getNoteInterventions(selectedNote)}</p>
                                 </div>
                             )}
-                            {selectedNote.clientResponse && (
+                            {getNoteClientResponse(selectedNote) && (
                                 <div className="note-section">
                                     <h4>Client Response</h4>
-                                    <p>{selectedNote.clientResponse}</p>
+                                    <p>{getNoteClientResponse(selectedNote)}</p>
                                 </div>
                             )}
-                            {selectedNote.notes && (
+                            {getNoteAdditionalNotes(selectedNote) && (
                                 <div className="note-section">
                                     <h4>Additional Notes</h4>
-                                    <p>{selectedNote.notes}</p>
+                                    <p>{getNoteAdditionalNotes(selectedNote)}</p>
                                 </div>
                             )}
                         </div>
 
-                        {selectedNote.signedAt && (
+                        {selectedNote.signed_at && (
                             <div className="note-signature">
                                 <CheckCircle size={16} weight="fill" />
-                                Signed by {selectedNote.signedBy} on {formatDate(selectedNote.signedAt)}
+                                Signed on {formatDate(selectedNote.signed_at)}
+                            </div>
+                        )}
+
+                        {selectedNote.co_signed_at && (
+                            <div className="note-signature">
+                                <CheckCircle size={16} weight="fill" />
+                                Co-signed by {selectedNote.co_signer_name || 'supervisor'} on {formatDate(selectedNote.co_signed_at)}
                             </div>
                         )}
 
                         <div className="note-view-actions">
-                            {selectedNote.status !== 'signed' && (
+                            {selectedNote.status !== 'signed' && selectedNote.status !== 'co_signed' && (
                                 <>
                                     <button className="btn-primary" onClick={() => handleEditNote(selectedNote)}>
                                         <PencilSimple size={16} weight="bold" />
@@ -765,19 +634,29 @@ export default function SessionNotesPage() {
                                 </>
                             )}
                             {selectedNote.status === 'signed' && (
-                                <button className="btn-secondary" onClick={() => {
-                                    const content = `SESSION NOTE\n============\nClient: ${selectedNote.clientName}\nDate: ${selectedNote.sessionDate}\nProvider: ${selectedNote.providerName}\nType: ${selectedNote.sessionType}\nCPT: ${selectedNote.cptCode}\nStatus: ${selectedNote.status}`
-                                    const blob = new Blob([content], { type: 'text/plain' })
-                                    const url = URL.createObjectURL(blob)
-                                    const a = document.createElement('a')
-                                    a.href = url
-                                    a.download = `note_${selectedNote.id}.txt`
-                                    a.click()
-                                    URL.revokeObjectURL(url)
-                                }}>
-                                    <FileText size={16} weight="bold" />
-                                    Download PDF
-                                </button>
+                                <>
+                                    <button className="btn-secondary" onClick={() => {
+                                        setIsViewModalOpen(false)
+                                        setIsCoSignModalOpen(true)
+                                    }}>
+                                        <UserPlus size={16} weight="bold" />
+                                        Request Co-Sign
+                                    </button>
+                                    <button className="btn-secondary" onClick={() => {
+                                        const nd = selectedNote.note_data || {}
+                                        const content = `SESSION NOTE\n============\nClient: ${selectedNote.client_name}\nDate: ${selectedNote.session_date}\nProvider: ${selectedNote.provider_name}\nCPT: ${selectedNote.service_code}\nStatus: ${selectedNote.status}\n\nObjectives: ${nd.objectives || ''}\nInterventions: ${nd.interventions || ''}\nClient Response: ${nd.client_response || ''}\nNotes: ${nd.notes || ''}`
+                                        const blob = new Blob([content], { type: 'text/plain' })
+                                        const url = URL.createObjectURL(blob)
+                                        const a = document.createElement('a')
+                                        a.href = url
+                                        a.download = `note_${selectedNote.id}.txt`
+                                        a.click()
+                                        URL.revokeObjectURL(url)
+                                    }}>
+                                        <FileText size={16} weight="bold" />
+                                        Download PDF
+                                    </button>
+                                </>
                             )}
                         </div>
                     </div>
@@ -811,7 +690,6 @@ export default function SessionNotesPage() {
                         <div className="note-editor-section">
                             <h4>Session Information</h4>
 
-                            {/* Template Selection */}
                             {!selectedNote && (
                                 <div className="form-group template-select">
                                     <label className="form-label">Template</label>
@@ -837,24 +715,9 @@ export default function SessionNotesPage() {
                                     disabled={!!selectedNote}
                                 >
                                     <option value="">Select client</option>
-                                    {clients.filter(c => c.id !== 0).map(c => (
-                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                    {clientsList.map(c => (
+                                        <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
                                     ))}
-                                </select>
-                            </div>
-
-                            <div className="form-group">
-                                <label className="form-label">Session Type *</label>
-                                <select
-                                    value={formData.sessionType}
-                                    onChange={(e) => setFormData(prev => ({ ...prev, sessionType: e.target.value }))}
-                                    className="form-input-basic"
-                                    required
-                                >
-                                    <option value="aba_session">ABA Session</option>
-                                    <option value="parent_training">Parent Training</option>
-                                    <option value="assessment">Assessment</option>
-                                    <option value="supervision">Supervision</option>
                                 </select>
                             </div>
 
@@ -867,30 +730,6 @@ export default function SessionNotesPage() {
                                     className="form-input-basic"
                                     required
                                 />
-                            </div>
-
-                            <div className="form-row-2">
-                                <div className="form-group">
-                                    <label className="form-label">Duration (min)</label>
-                                    <input
-                                        type="number"
-                                        value={formData.duration}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, duration: e.target.value }))}
-                                        className="form-input-basic"
-                                        min="15"
-                                        step="15"
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label className="form-label">Units</label>
-                                    <input
-                                        type="number"
-                                        value={formData.units}
-                                        onChange={(e) => setFormData(prev => ({ ...prev, units: e.target.value }))}
-                                        className="form-input-basic"
-                                        min="1"
-                                    />
-                                </div>
                             </div>
 
                             <div className="form-group">
@@ -1083,10 +922,14 @@ export default function SessionNotesPage() {
                     </p>
                     <div className="form-group">
                         <label className="form-label">Select Provider</label>
-                        <select className="form-input-basic">
+                        <select
+                            className="form-input-basic"
+                            value={coSignProviderId}
+                            onChange={(e) => setCoSignProviderId(e.target.value)}
+                        >
                             <option value="">Choose co-signer...</option>
-                            {providers.filter(p => p.id !== 0).map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
+                            {providersList.map(p => (
+                                <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
                             ))}
                         </select>
                     </div>
@@ -1096,6 +939,8 @@ export default function SessionNotesPage() {
                             className="form-textarea"
                             placeholder="Add a note for the co-signer..."
                             rows={2}
+                            value={coSignMessage}
+                            onChange={(e) => setCoSignMessage(e.target.value)}
                         />
                     </div>
                     <div className="form-actions">
@@ -1108,16 +953,7 @@ export default function SessionNotesPage() {
                         >
                             Cancel
                         </button>
-                        <button className="btn-primary" onClick={() => {
-                            // Mark note as pending co-sign
-                            if (selectedNote) {
-                                setNotes(prev => prev.map(n =>
-                                    n.id === selectedNote.id ? { ...n, status: 'pending_cosign' as const } : n
-                                ))
-                            }
-                            setIsCoSignModalOpen(false)
-                            setSelectedNote(null)
-                        }}>
+                        <button className="btn-primary" onClick={handleRequestCoSign}>
                             <UserPlus size={18} weight="bold" /> Send Request
                         </button>
                     </div>
@@ -1134,7 +970,7 @@ export default function SessionNotesPage() {
                 onConfirm={handleConfirmDelete}
                 title="Delete Note"
                 message={selectedNote
-                    ? `Are you sure you want to delete this session note for ${selectedNote.clientName}? This action cannot be undone.`
+                    ? `Are you sure you want to delete this session note for ${selectedNote.client_name || 'this client'}? This action cannot be undone.`
                     : ''
                 }
                 confirmLabel="Delete"

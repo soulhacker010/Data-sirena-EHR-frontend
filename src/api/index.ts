@@ -1,0 +1,13 @@
+export { authApi } from './auth'
+export { clientsApi } from './clients'
+export { appointmentsApi } from './appointments'
+export { notesApi } from './notes'
+export { billingApi } from './billing'
+export { dashboardApi } from './dashboard'
+export { notificationsApi } from './notifications'
+export { usersApi } from './users'
+export { auditApi } from './audit'
+export { reportsApi } from './reports'
+export { settingsApi } from './settings'
+export { default as apiClient } from './client'
+

@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { DashboardLayout } from '../components/layout'
-import EmptyState from '../components/ui/EmptyState'
-import { PageSkeleton } from '../components/ui'
+import { EmptyState, PageSkeleton } from '../components/ui'
+import { notificationsApi } from '../api'
+import type { Notification } from '../types'
 import {
     BellRinging,
     Check,
@@ -15,128 +16,75 @@ import {
     ClipboardText
 } from '@phosphor-icons/react'
 
-interface Notification {
-    id: number
-    type: 'auth' | 'billing' | 'appointment' | 'note' | 'system'
-    title: string
-    message: string
-    timestamp: string
-    isRead: boolean
-    priority: 'low' | 'medium' | 'high'
-}
-
-const mockNotifications: Notification[] = [
-    {
-        id: 1,
-        type: 'auth',
-        title: 'Authorization Near Limit',
-        message: 'Sarah Johnson\'s ABA Therapy authorization is at 90% usage (108/120 units)',
-        timestamp: '2026-02-09T14:30:00',
-        isRead: false,
-        priority: 'high'
-    },
-    {
-        id: 2,
-        type: 'billing',
-        title: 'Claim Denied',
-        message: 'Claim #CLM-2024-0089 for Emily Rodriguez was denied. Reason: Invalid modifier',
-        timestamp: '2026-02-09T12:15:00',
-        isRead: false,
-        priority: 'high'
-    },
-    {
-        id: 3,
-        type: 'note',
-        title: 'Progress Note Overdue',
-        message: 'Session note for David Brown (Feb 5) is 4 days overdue',
-        timestamp: '2026-02-09T09:00:00',
-        isRead: false,
-        priority: 'medium'
-    },
-    {
-        id: 4,
-        type: 'appointment',
-        title: 'Appointment Tomorrow',
-        message: 'Reminder: Michael Chen has an appointment tomorrow at 10:00 AM',
-        timestamp: '2026-02-08T17:00:00',
-        isRead: true,
-        priority: 'low'
-    },
-    {
-        id: 5,
-        type: 'auth',
-        title: 'Authorization Expiring Soon',
-        message: 'Sophie Williams\'s authorization expires in 14 days (June 30, 2024)',
-        timestamp: '2026-02-08T10:00:00',
-        isRead: true,
-        priority: 'medium'
-    },
-    {
-        id: 6,
-        type: 'system',
-        title: 'System Maintenance',
-        message: 'Scheduled maintenance on Sunday, Feb 11 from 2:00 AM - 4:00 AM EST',
-        timestamp: '2026-02-07T09:00:00',
-        isRead: true,
-        priority: 'low'
-    },
-    {
-        id: 7,
-        type: 'billing',
-        title: 'Payment Received',
-        message: 'Payment of $250.00 received from Blue Cross for Invoice #INV-2024-0156',
-        timestamp: '2026-02-06T15:30:00',
-        isRead: true,
-        priority: 'low'
-    },
-]
-
 export default function NotificationsPage() {
+    const [notifications, setNotifications] = useState<Notification[]>([])
+    const [filterType, setFilterType] = useState<string>('all')
     const [isLoading, setIsLoading] = useState(true)
 
     useEffect(() => {
-        const timer = setTimeout(() => setIsLoading(false), 800)
-        return () => clearTimeout(timer)
+        loadNotifications()
     }, [])
 
-    const [notifications, setNotifications] = useState<Notification[]>(mockNotifications)
-    const [filter, setFilter] = useState<'all' | 'unread' | 'auth' | 'billing' | 'appointment' | 'note'>('all')
-
-    const unreadCount = notifications.filter(n => !n.isRead).length
-
-    const filteredNotifications = notifications.filter(n => {
-        if (filter === 'all') return true
-        if (filter === 'unread') return !n.isRead
-        return n.type === filter
-    })
-
-    const markAsRead = (id: number) => {
-        setNotifications(prev => prev.map(n =>
-            n.id === id ? { ...n, isRead: true } : n
-        ))
+    const loadNotifications = async () => {
+        try {
+            setIsLoading(true)
+            const data = await notificationsApi.getAll()
+            setNotifications(data)
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to load notifications')
+        } finally {
+            setIsLoading(false)
+        }
     }
 
-    const markAllAsRead = () => {
-        setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
-        toast.success('All notifications marked as read')
+    const markAsRead = async (id: string) => {
+        try {
+            await notificationsApi.markAsRead(id)
+            setNotifications(prev => prev.map(n =>
+                n.id === id ? { ...n, is_read: true } : n
+            ))
+        } catch {
+            toast.error('Failed to mark as read')
+        }
     }
 
-    const deleteNotification = (id: number) => {
-        setNotifications(prev => prev.filter(n => n.id !== id))
+    const markAllAsRead = async () => {
+        try {
+            await notificationsApi.markAllRead()
+            setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
+            toast.success('All notifications marked as read')
+        } catch {
+            toast.error('Failed to mark all as read')
+        }
     }
 
-    const clearAll = () => {
-        setNotifications([])
-        toast.success('All notifications cleared')
+    const deleteNotification = async (id: string) => {
+        try {
+            await notificationsApi.delete(id)
+            setNotifications(prev => prev.filter(n => n.id !== id))
+        } catch {
+            toast.error('Failed to delete notification')
+        }
+    }
+
+    const clearAll = async () => {
+        try {
+            await Promise.all(notifications.map(n => notificationsApi.delete(n.id)))
+            setNotifications([])
+            toast.success('All notifications cleared')
+        } catch {
+            toast.error('Failed to clear notifications')
+        }
     }
 
     const getIcon = (type: string) => {
         switch (type) {
-            case 'auth': return <ClipboardText size={20} weight="duotone" />
-            case 'billing': return <CurrencyDollar size={20} weight="duotone" />
-            case 'appointment': return <CalendarCheck size={20} weight="duotone" />
-            case 'note': return <FileText size={20} weight="duotone" />
-            default: return <Info size={20} weight="duotone" />
+            case 'auth_expiring': return <ClipboardText size={20} weight="duotone" className="icon-warning" />
+            case 'claim_denied': return <CurrencyDollar size={20} weight="duotone" className="icon-error" />
+            case 'appointment_reminder': return <CalendarCheck size={20} weight="duotone" className="icon-primary" />
+            case 'missing_note': return <FileText size={20} weight="duotone" className="icon-warning" />
+            case 'general': return <Info size={20} weight="duotone" className="icon-muted" />
+            default: return <BellRinging size={20} weight="duotone" className="icon-muted" />
         }
     }
 
@@ -149,9 +97,16 @@ export default function NotificationsPage() {
 
         if (hours < 1) return 'Just now'
         if (hours < 24) return `${hours}h ago`
-        if (days === 1) return 'Yesterday'
+        if (days < 7) return `${days}d ago`
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     }
+
+    const unreadCount = notifications.filter(n => !n.is_read).length
+    const filtered = filterType === 'all'
+        ? notifications
+        : filterType === 'unread'
+            ? notifications.filter(n => !n.is_read)
+            : notifications.filter(n => n.type === filterType)
 
     if (isLoading) {
         return (
@@ -164,121 +119,80 @@ export default function NotificationsPage() {
     return (
         <DashboardLayout>
             <div className="page-header">
-                <div className="page-header-content">
+                <div className="page-header-left">
                     <h1 className="page-title">
-                        <BellRinging size={28} weight="duotone" className="page-title-icon" />
+                        <BellRinging size={28} weight="duotone" />
                         Notifications
-                        {unreadCount > 0 && (
-                            <span className="notification-badge-large">{unreadCount}</span>
-                        )}
                     </h1>
-                    <p className="page-subtitle">Stay updated on important events</p>
+                    <p className="page-subtitle">
+                        {unreadCount} unread · {notifications.length} total
+                    </p>
                 </div>
-                <div className="header-actions">
-                    {unreadCount > 0 && (
-                        <button className="btn-secondary" onClick={markAllAsRead}>
-                            <Check size={18} weight="bold" />
-                            Mark all as read
-                        </button>
-                    )}
-                    {notifications.length > 0 && (
-                        <button className="btn-ghost" onClick={clearAll}>
-                            <Trash size={18} weight="regular" />
-                            Clear all
-                        </button>
-                    )}
+                <div className="page-header-actions">
+                    <button className="btn-secondary" onClick={markAllAsRead} disabled={unreadCount === 0}>
+                        <CheckCircle size={18} weight="bold" />
+                        Mark All Read
+                    </button>
+                    <button className="btn-secondary danger" onClick={clearAll} disabled={notifications.length === 0}>
+                        <Trash size={18} weight="bold" />
+                        Clear All
+                    </button>
                 </div>
             </div>
 
-            {/* Filters */}
+            {/* Filter tabs */}
             <div className="notification-filters">
-                <button
-                    className={`filter-chip ${filter === 'all' ? 'active' : ''}`}
-                    onClick={() => setFilter('all')}
-                >
-                    All
-                </button>
-                <button
-                    className={`filter-chip ${filter === 'unread' ? 'active' : ''}`}
-                    onClick={() => setFilter('unread')}
-                >
-                    Unread ({unreadCount})
-                </button>
-                <button
-                    className={`filter-chip ${filter === 'auth' ? 'active' : ''}`}
-                    onClick={() => setFilter('auth')}
-                >
-                    <ClipboardText size={16} />
-                    Authorizations
-                </button>
-                <button
-                    className={`filter-chip ${filter === 'billing' ? 'active' : ''}`}
-                    onClick={() => setFilter('billing')}
-                >
-                    <CurrencyDollar size={16} />
-                    Billing
-                </button>
-                <button
-                    className={`filter-chip ${filter === 'appointment' ? 'active' : ''}`}
-                    onClick={() => setFilter('appointment')}
-                >
-                    <CalendarCheck size={16} />
-                    Appointments
-                </button>
-                <button
-                    className={`filter-chip ${filter === 'note' ? 'active' : ''}`}
-                    onClick={() => setFilter('note')}
-                >
-                    <FileText size={16} />
-                    Notes
-                </button>
+                {[
+                    { value: 'all', label: 'All' },
+                    { value: 'unread', label: 'Unread' },
+                    { value: 'auth_expiring', label: 'Authorization' },
+                    { value: 'claim_denied', label: 'Billing' },
+                    { value: 'appointment_reminder', label: 'Appointment' },
+                    { value: 'missing_note', label: 'Notes' },
+                    { value: 'general', label: 'General' },
+                ].map(tab => (
+                    <button
+                        key={tab.value}
+                        className={`notification-filter-tab ${filterType === tab.value ? 'active' : ''}`}
+                        onClick={() => setFilterType(tab.value)}
+                    >
+                        {tab.label}
+                        {tab.value === 'unread' && unreadCount > 0 && (
+                            <span className="notification-count">{unreadCount}</span>
+                        )}
+                    </button>
+                ))}
             </div>
 
-            {/* Notification List */}
+            {/* Notification list */}
             <div className="notification-list">
-                {filteredNotifications.length === 0 ? (
-                    <EmptyState
-                        variant={filter !== 'all' ? 'no-results' : 'no-data'}
-                        title={filter !== 'all' ? 'No matching notifications' : 'All caught up!'}
-                        description={filter !== 'all' ? 'Try a different filter category' : 'You have no notifications. Check back later for updates.'}
-                    />
-                ) : (
-                    filteredNotifications.map(notification => (
-                        <div
-                            key={notification.id}
-                            className={`notification-item ${!notification.isRead ? 'unread' : ''} priority-${notification.priority}`}
-                            onClick={() => markAsRead(notification.id)}
-                        >
-                            <div className={`notification-icon ${notification.type}`}>
-                                {getIcon(notification.type)}
-                            </div>
-                            <div className="notification-content">
-                                <div className="notification-header">
-                                    <h4>{notification.title}</h4>
-                                    <span className="notification-time">{formatTime(notification.timestamp)}</span>
-                                </div>
-                                <p>{notification.message}</p>
-                            </div>
-                            <div className="notification-actions">
-                                {!notification.isRead && (
-                                    <button
-                                        className="btn-icon"
-                                        onClick={(e) => { e.stopPropagation(); markAsRead(notification.id); }}
-                                        title="Mark as read"
-                                    >
-                                        <CheckCircle size={18} />
-                                    </button>
-                                )}
-                                <button
-                                    className="btn-icon"
-                                    onClick={(e) => { e.stopPropagation(); deleteNotification(notification.id); }}
-                                    title="Delete"
-                                >
-                                    <Trash size={18} />
-                                </button>
-                            </div>
+                {filtered.length > 0 ? filtered.map(n => (
+                    <div key={n.id} className={`notification-item ${!n.is_read ? 'unread' : ''} priority-${n.priority}`}>
+                        <div className="notification-icon">
+                            {getIcon(n.type)}
                         </div>
-                    ))
+                        <div className="notification-content">
+                            <h3 className="notification-title">{n.title}</h3>
+                            <p className="notification-message">{n.message}</p>
+                            <span className="notification-time">{formatTime(n.created_at)}</span>
+                        </div>
+                        <div className="notification-actions">
+                            {!n.is_read && (
+                                <button className="btn-icon-sm" title="Mark as read" onClick={() => markAsRead(n.id)}>
+                                    <Check size={16} />
+                                </button>
+                            )}
+                            <button className="btn-icon-sm danger" title="Delete" onClick={() => deleteNotification(n.id)}>
+                                <Trash size={16} />
+                            </button>
+                        </div>
+                    </div>
+                )) : (
+                    <EmptyState
+                        variant="no-data"
+                        title="No notifications"
+                        description={filterType === 'unread' ? 'All caught up!' : 'No notifications to show.'}
+                    />
                 )}
             </div>
         </DashboardLayout>

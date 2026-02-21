@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { Modal, EditClientModal, EmptyState, PageSkeleton, ConfirmDialog } from '../components/ui'
+import { clientsApi, billingApi } from '../api'
+import type { ClientDetail, Authorization, ClientDocument, Invoice, Payment, Claim } from '../types'
 import {
     ArrowLeft,
     User,
@@ -25,89 +27,13 @@ import {
     FilePdf,
     FileDoc,
     Image,
-    Receipt
+    Receipt,
+    ClipboardText,
+    Eraser
 } from '@phosphor-icons/react'
 
 // Tab type
 type TabType = 'profile' | 'insurance' | 'authorizations' | 'notes' | 'documents' | 'billing'
-
-// Mock client data
-const mockClient = {
-    id: 1,
-    firstName: 'Sarah',
-    lastName: 'Johnson',
-    dateOfBirth: '1995-03-15',
-    gender: 'Female',
-    phone: '(555) 123-4567',
-    email: 'sarah.j@email.com',
-    address: '123 Main Street',
-    city: 'Los Angeles',
-    state: 'CA',
-    zipCode: '90001',
-    status: 'active',
-    provider: 'Dr. John Smith',
-    createdAt: '2024-06-15',
-    emergencyContact: {
-        name: 'John Johnson',
-        relationship: 'Spouse',
-        phone: '(555) 987-6543'
-    },
-    insurance: {
-        primary: {
-            name: 'Blue Cross Blue Shield',
-            memberId: 'BCB123456789',
-            groupNumber: 'GRP001234',
-            phone: '(800) 123-4567',
-            policyHolder: 'Sarah Johnson',
-            relationship: 'Self'
-        },
-        secondary: null
-    },
-    diagnoses: [
-        { code: 'F84.0', description: 'Autistic disorder' },
-        { code: 'F80.2', description: 'Mixed receptive-expressive language disorder' }
-    ],
-    authorizations: [
-        {
-            id: 1,
-            service: 'ABA Therapy (97153)',
-            totalUnits: 160,
-            usedUnits: 128,
-            startDate: '2026-01-01',
-            endDate: '2026-06-30',
-            status: 'active'
-        },
-        {
-            id: 2,
-            service: 'Parent Training (97156)',
-            totalUnits: 24,
-            usedUnits: 8,
-            startDate: '2026-01-01',
-            endDate: '2026-06-30',
-            status: 'active'
-        }
-    ],
-    recentSessions: [
-        { id: 1, date: '2026-02-08', type: 'ABA Session', cptCode: '97153', duration: '2 hours', units: 8, status: 'completed', provider: 'Dr. Smith' },
-        { id: 2, date: '2026-02-06', type: 'ABA Session', cptCode: '97153', duration: '2 hours', units: 8, status: 'completed', provider: 'Dr. Smith' },
-        { id: 3, date: '2026-02-04', type: 'Parent Training', cptCode: '97156', duration: '1 hour', units: 4, status: 'completed', provider: 'Dr. Smith' },
-        { id: 4, date: '2026-02-01', type: 'ABA Session', cptCode: '97153', duration: '2 hours', units: 8, status: 'no-show', provider: 'Dr. Smith' },
-    ],
-    documents: [
-        { id: 1, name: 'Insurance Card.pdf', type: 'pdf', size: '245 KB', uploadedAt: '2026-01-15', uploadedBy: 'Admin' },
-        { id: 2, name: 'Initial Assessment.pdf', type: 'pdf', size: '1.2 MB', uploadedAt: '2024-06-15', uploadedBy: 'Dr. Smith' },
-        { id: 3, name: 'Treatment Plan.docx', type: 'doc', size: '89 KB', uploadedAt: '2024-07-01', uploadedBy: 'Dr. Smith' },
-        { id: 4, name: 'Progress Photo.jpg', type: 'image', size: '2.1 MB', uploadedAt: '2026-02-01', uploadedBy: 'Dr. Smith' },
-    ],
-    invoices: [
-        { id: 1, number: 'INV-2026-001', date: '2026-02-01', amount: 450.00, paid: 450.00, status: 'paid' },
-        { id: 2, number: 'INV-2026-008', date: '2026-02-08', amount: 450.00, paid: 0, status: 'pending' },
-    ],
-    payments: [
-        { id: 1, date: '2026-02-05', amount: 450.00, method: 'Insurance', reference: 'EOB-12345' },
-    ],
-    balance: 450.00
-}
 
 // Calculate age
 const calculateAge = (dob: string) => {
@@ -137,31 +63,122 @@ const formatCurrency = (amount: number) => {
 
 // Get file icon
 const getFileIcon = (type: string) => {
-    switch (type) {
-        case 'pdf': return <FilePdf size={24} weight="duotone" className="text-red-500" />
-        case 'doc': return <FileDoc size={24} weight="duotone" className="text-blue-500" />
-        case 'image': return <Image size={24} weight="duotone" className="text-green-500" />
-        default: return <File size={24} weight="duotone" className="text-gray-500" />
-    }
+    const lower = type.toLowerCase()
+    if (lower.includes('pdf')) return <FilePdf size={24} weight="duotone" className="text-red-500" />
+    if (lower.includes('doc')) return <FileDoc size={24} weight="duotone" className="text-blue-500" />
+    if (lower.includes('image') || lower.includes('jpg') || lower.includes('png'))
+        return <Image size={24} weight="duotone" className="text-green-500" />
+    return <File size={24} weight="duotone" className="text-gray-500" />
+}
+
+// Format file size
+const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
 export default function ClientDetailPage() {
     const { id } = useParams()
     const navigate = useNavigate()
-    const client = mockClient
+
+    const [client, setClient] = useState<ClientDetail | null>(null)
+    const [authorizations, setAuthorizations] = useState<Authorization[]>([])
+    const [invoices, setInvoices] = useState<Invoice[]>([])
+    const [payments, setPayments] = useState<Payment[]>([])
+    const [claims, setClaims] = useState<Claim[]>([])
+
     const [activeTab, setActiveTab] = useState<TabType>('profile')
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
+    const [isPostPaymentModalOpen, setIsPostPaymentModalOpen] = useState(false)
+    const [isWriteOffModalOpen, setIsWriteOffModalOpen] = useState(false)
+    const [selectedClaimId, setSelectedClaimId] = useState<string | null>(null)
     const [isLoading, setIsLoading] = useState(true)
+    const [deleteDocId, setDeleteDocId] = useState<string | null>(null)
     const [deleteDocName, setDeleteDocName] = useState<string | null>(null)
 
-    useEffect(() => {
-        const timer = setTimeout(() => setIsLoading(false), 800)
-        return () => clearTimeout(timer)
-    }, [])
+    // Payment form state
+    const [paymentAmount, setPaymentAmount] = useState('')
+    const [paymentMethod, setPaymentMethod] = useState('credit_card')
+    const [paymentReference, setPaymentReference] = useState('')
 
-    // Handle New Session - navigate to calendar with client preselected
+    // Post payment form state
+    const [postInsurancePaid, setPostInsurancePaid] = useState('')
+    const [postPatientResp, setPostPatientResp] = useState('')
+    const [postWriteOff, setPostWriteOff] = useState('')
+    const [postReference, setPostReference] = useState('')
+    const [postNotes, setPostNotes] = useState('')
+
+    // Write-off form state
+    const [writeOffAmount, setWriteOffAmount] = useState('')
+    const [writeOffReason, setWriteOffReason] = useState('')
+    const [writeOffNotes, setWriteOffNotes] = useState('')
+
+    // Upload ref
+    const fileInputRef = useRef<HTMLInputElement>(null)
+    const [isSaving, setIsSaving] = useState(false)
+
+    // Load client detail + related data
+    useEffect(() => {
+        if (!id) return
+        const load = async () => {
+            setIsLoading(true)
+            try {
+                const clientData = await clientsApi.getById(id)
+                setClient(clientData)
+                setAuthorizations(clientData.authorizations || [])
+
+                // Fetch billing data in parallel
+                const [invoicesRes, paymentsRes, claimsData] = await Promise.all([
+                    billingApi.getInvoices({ client_id: id }),
+                    billingApi.getPayments({ client_id: id }),
+                    billingApi.getClientClaims(id),
+                ])
+                setInvoices(invoicesRes.results)
+                setPayments(paymentsRes.results)
+                setClaims(claimsData)
+            } catch (err: any) {
+                toast.error(err?.response?.data?.detail || 'Failed to load client')
+                navigate('/clients')
+            } finally {
+                setIsLoading(false)
+            }
+        }
+        load()
+    }, [id, navigate])
+
+    // Refresh client
+    const refreshClient = async () => {
+        if (!id) return
+        try {
+            const clientData = await clientsApi.getById(id)
+            setClient(clientData)
+            setAuthorizations(clientData.authorizations || [])
+        } catch {
+            // silent
+        }
+    }
+
+    // Refresh billing
+    const refreshBilling = async () => {
+        if (!id) return
+        try {
+            const [invoicesRes, paymentsRes, claimsData] = await Promise.all([
+                billingApi.getInvoices({ client_id: id }),
+                billingApi.getPayments({ client_id: id }),
+                billingApi.getClientClaims(id),
+            ])
+            setInvoices(invoicesRes.results)
+            setPayments(paymentsRes.results)
+            setClaims(claimsData)
+        } catch {
+            // silent
+        }
+    }
+
+    // Handle New Session
     const handleNewSession = () => {
         navigate(`/calendar?clientId=${id}&action=new`)
     }
@@ -171,13 +188,135 @@ export default function ClientDetailPage() {
         setIsEditModalOpen(true)
     }
 
-    if (isLoading) {
+    // Handle record payment
+    const handleRecordPayment = async () => {
+        if (isSaving) return
+        if (!paymentAmount || !id) return
+        const amount = parseFloat(paymentAmount)
+        if (amount <= 0) {
+            toast.error('Amount must be greater than zero')
+            return
+        }
+
+        // We need an invoice_id; in this flow we pick the first unpaid invoice
+        const unpaid = invoices.find(inv => inv.status !== 'paid')
+        if (!unpaid) {
+            toast.error('No outstanding invoice found')
+            return
+        }
+
+        setIsSaving(true)
+        try {
+            await billingApi.recordPayment({
+                invoice_id: unpaid.id,
+                amount,
+                payment_method: paymentMethod as any,
+                notes: paymentReference || undefined,
+            })
+            toast.success(`Payment of ${formatCurrency(amount)} recorded`)
+            setIsPaymentModalOpen(false)
+            setPaymentAmount('')
+            setPaymentReference('')
+            refreshBilling()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to record payment')
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    // Handle post payment to claim
+    const handlePostClaimPayment = async () => {
+        if (!selectedClaimId) return
+        try {
+            await billingApi.postClaimPayment(selectedClaimId, {
+                insurance_paid: parseFloat(postInsurancePaid) || 0,
+                patient_responsibility: parseFloat(postPatientResp) || 0,
+                write_off_amount: parseFloat(postWriteOff) || 0,
+                reference_number: postReference || undefined,
+                notes: postNotes || undefined,
+            })
+            toast.success('Payment posted to claim')
+            setIsPostPaymentModalOpen(false)
+            setSelectedClaimId(null)
+            setPostInsurancePaid('')
+            setPostPatientResp('')
+            setPostWriteOff('')
+            setPostReference('')
+            setPostNotes('')
+            refreshBilling()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to post payment')
+        }
+    }
+
+    // Handle write-off
+    const handleWriteOff = async () => {
+        if (!selectedClaimId) return
+        try {
+            await billingApi.writeOffClaim(selectedClaimId, {
+                amount: parseFloat(writeOffAmount) || 0,
+                reason: writeOffReason,
+                notes: writeOffNotes || undefined,
+            })
+            toast.success('Write-off applied')
+            setIsWriteOffModalOpen(false)
+            setSelectedClaimId(null)
+            setWriteOffAmount('')
+            setWriteOffReason('')
+            setWriteOffNotes('')
+            refreshBilling()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to apply write-off')
+        }
+    }
+
+    // Handle document upload
+    const handleUploadDocument = async (file: File) => {
+        if (isSaving) return
+        if (!id) return
+        setIsSaving(true)
+        try {
+            await clientsApi.uploadDocument(id, file)
+            toast.success('Document uploaded')
+            setIsUploadModalOpen(false)
+            refreshClient()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Upload failed')
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    // Handle document delete
+    const handleDeleteDocument = async () => {
+        if (isSaving) return
+        if (!id || !deleteDocId) return
+        setIsSaving(true)
+        try {
+            await clientsApi.deleteDocument(id, deleteDocId)
+            toast.success(`${deleteDocName} deleted`)
+            setDeleteDocId(null)
+            setDeleteDocName(null)
+            refreshClient()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to delete document')
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    if (isLoading || !client) {
         return (
             <DashboardLayout>
                 <PageSkeleton />
             </DashboardLayout>
         )
     }
+
+    const documents = client.documents || []
+    const recentSessions = client.recent_sessions || []
+    const balance = invoices.reduce((sum, inv) => sum + inv.balance, 0)
 
     return (
         <DashboardLayout>
@@ -191,12 +330,12 @@ export default function ClientDetailPage() {
                 <div className="detail-header-content">
                     <div className="detail-header-left">
                         <div className="detail-avatar">
-                            {client.firstName[0]}{client.lastName[0]}
+                            {client.first_name[0]}{client.last_name[0]}
                         </div>
                         <div className="detail-info">
-                            <h1 className="detail-title">{client.firstName} {client.lastName}</h1>
+                            <h1 className="detail-title">{client.first_name} {client.last_name}</h1>
                             <p className="detail-meta">
-                                {client.gender} · Age {calculateAge(client.dateOfBirth)} · DOB {formatDate(client.dateOfBirth)}
+                                {client.gender || 'N/A'} · Age {calculateAge(client.date_of_birth)} · DOB {formatDate(client.date_of_birth)}
                             </p>
                         </div>
                     </div>
@@ -252,21 +391,23 @@ export default function ClientDetailPage() {
                                             <Phone size={18} weight="regular" className="info-icon" />
                                             <div>
                                                 <p className="info-label">Phone</p>
-                                                <p className="info-value">{client.phone}</p>
+                                                <p className="info-value">{client.phone || 'N/A'}</p>
                                             </div>
                                         </div>
                                         <div className="info-item">
                                             <EnvelopeSimple size={18} weight="regular" className="info-icon" />
                                             <div>
                                                 <p className="info-label">Email</p>
-                                                <p className="info-value">{client.email}</p>
+                                                <p className="info-value">{client.email || 'N/A'}</p>
                                             </div>
                                         </div>
                                         <div className="info-item">
                                             <MapPin size={18} weight="regular" className="info-icon" />
                                             <div>
                                                 <p className="info-label">Address</p>
-                                                <p className="info-value">{client.address}, {client.city}, {client.state} {client.zipCode}</p>
+                                                <p className="info-value">
+                                                    {[client.address, client.city, client.state, client.zip_code].filter(Boolean).join(', ') || 'N/A'}
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
@@ -284,14 +425,14 @@ export default function ClientDetailPage() {
                                             <User size={18} weight="regular" className="info-icon" />
                                             <div>
                                                 <p className="info-label">Name</p>
-                                                <p className="info-value">{client.emergencyContact.name} ({client.emergencyContact.relationship})</p>
+                                                <p className="info-value">{client.emergency_contact_name || 'N/A'}</p>
                                             </div>
                                         </div>
                                         <div className="info-item">
                                             <Phone size={18} weight="regular" className="info-icon" />
                                             <div>
                                                 <p className="info-label">Phone</p>
-                                                <p className="info-value">{client.emergencyContact.phone}</p>
+                                                <p className="info-value">{client.emergency_contact_phone || 'N/A'}</p>
                                             </div>
                                         </div>
                                     </div>
@@ -305,12 +446,15 @@ export default function ClientDetailPage() {
                                 </div>
                                 <div className="card-body">
                                     <div className="diagnosis-list">
-                                        {client.diagnoses.map((dx, index) => (
-                                            <div key={index} className="diagnosis-item">
-                                                <span className="diagnosis-code">{dx.code}</span>
-                                                <span className="diagnosis-desc">{dx.description}</span>
-                                            </div>
-                                        ))}
+                                        {(client.diagnosis_codes || []).length > 0 ? (
+                                            client.diagnosis_codes.map((code, index) => (
+                                                <div key={index} className="diagnosis-item">
+                                                    <span className="diagnosis-code">{code}</span>
+                                                </div>
+                                            ))
+                                        ) : (
+                                            <p className="text-muted">No diagnoses recorded</p>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -325,15 +469,15 @@ export default function ClientDetailPage() {
                                 <div className="card-body">
                                     <div className="quick-stats">
                                         <div className="quick-stat">
-                                            <p className="quick-stat-value">{client.recentSessions.length}</p>
-                                            <p className="quick-stat-label">Sessions (30d)</p>
+                                            <p className="quick-stat-value">{recentSessions.length}</p>
+                                            <p className="quick-stat-label">Recent Sessions</p>
                                         </div>
                                         <div className="quick-stat">
-                                            <p className="quick-stat-value">{client.authorizations.length}</p>
+                                            <p className="quick-stat-value">{authorizations.length}</p>
                                             <p className="quick-stat-label">Active Auths</p>
                                         </div>
                                         <div className="quick-stat">
-                                            <p className="quick-stat-value">{formatCurrency(client.balance)}</p>
+                                            <p className="quick-stat-value">{formatCurrency(balance)}</p>
                                             <p className="quick-stat-label">Balance</p>
                                         </div>
                                     </div>
@@ -350,24 +494,27 @@ export default function ClientDetailPage() {
                                 </div>
                                 <div className="card-body p-0">
                                     <div className="session-list">
-                                        {client.recentSessions.slice(0, 3).map((session) => (
+                                        {recentSessions.slice(0, 3).map((session) => (
                                             <div key={session.id} className="session-item">
                                                 <div className="session-date">
                                                     <Calendar size={16} weight="regular" />
                                                     {formatDate(session.date)}
                                                 </div>
                                                 <div className="session-info">
-                                                    <p className="session-type">{session.type}</p>
+                                                    <p className="session-type">{session.service_code}</p>
                                                     <p className="session-meta">
                                                         <Clock size={12} weight="regular" />
-                                                        {session.duration}
+                                                        {session.provider_name}
                                                     </p>
                                                 </div>
                                                 <span className={`badge badge-${session.status === 'completed' ? 'active' : 'error'}`}>
-                                                    {session.status === 'completed' ? 'Completed' : 'No-show'}
+                                                    {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
                                                 </span>
                                             </div>
                                         ))}
+                                        {recentSessions.length === 0 && (
+                                            <p className="text-muted text-center" style={{ padding: '1rem' }}>No recent sessions</p>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -385,54 +532,67 @@ export default function ClientDetailPage() {
                             <div className="insurance-detail-grid">
                                 <div className="insurance-field">
                                     <p className="field-label">Insurance Provider</p>
-                                    <p className="field-value">{client.insurance.primary.name}</p>
+                                    <p className="field-value">{client.insurance_primary_name || 'N/A'}</p>
                                 </div>
                                 <div className="insurance-field">
                                     <p className="field-label">Member ID</p>
-                                    <p className="field-value">{client.insurance.primary.memberId}</p>
+                                    <p className="field-value">{client.insurance_primary_id || 'N/A'}</p>
                                 </div>
                                 <div className="insurance-field">
                                     <p className="field-label">Group Number</p>
-                                    <p className="field-value">{client.insurance.primary.groupNumber}</p>
-                                </div>
-                                <div className="insurance-field">
-                                    <p className="field-label">Phone</p>
-                                    <p className="field-value">{client.insurance.primary.phone}</p>
-                                </div>
-                                <div className="insurance-field">
-                                    <p className="field-label">Policy Holder</p>
-                                    <p className="field-value">{client.insurance.primary.policyHolder}</p>
-                                </div>
-                                <div className="insurance-field">
-                                    <p className="field-label">Relationship</p>
-                                    <p className="field-value">{client.insurance.primary.relationship}</p>
+                                    <p className="field-value">{client.insurance_primary_group || 'N/A'}</p>
                                 </div>
                             </div>
                         </div>
+                        {client.insurance_secondary_name && (
+                            <>
+                                <div className="card-header" style={{ borderTop: '1px solid var(--border)' }}>
+                                    <h2 className="card-title">Secondary Insurance</h2>
+                                </div>
+                                <div className="card-body">
+                                    <div className="insurance-detail-grid">
+                                        <div className="insurance-field">
+                                            <p className="field-label">Insurance Provider</p>
+                                            <p className="field-value">{client.insurance_secondary_name}</p>
+                                        </div>
+                                        <div className="insurance-field">
+                                            <p className="field-label">Member ID</p>
+                                            <p className="field-value">{client.insurance_secondary_id || 'N/A'}</p>
+                                        </div>
+                                        <div className="insurance-field">
+                                            <p className="field-label">Group Number</p>
+                                            <p className="field-value">{client.insurance_secondary_group || 'N/A'}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </div>
                 )}
 
                 {/* Authorizations Tab */}
                 {activeTab === 'authorizations' && (
                     <div className="space-y-4">
-                        {client.authorizations.map(auth => {
-                            const percent = Math.round((auth.usedUnits / auth.totalUnits) * 100)
-                            const remaining = auth.totalUnits - auth.usedUnits
+                        {authorizations.length > 0 ? authorizations.map(auth => {
+                            const percent = auth.units_approved > 0
+                                ? Math.round((auth.units_used / auth.units_approved) * 100)
+                                : 0
+                            const remaining = auth.units_approved - auth.units_used
                             return (
                                 <div key={auth.id} className="card">
                                     <div className="card-header">
-                                        <h2 className="card-title">{auth.service}</h2>
-                                        <span className={`badge badge-${auth.status}`}>
-                                            {auth.status.charAt(0).toUpperCase() + auth.status.slice(1)}
-                                        </span>
+                                        <h2 className="card-title">{auth.service_code || 'Authorization'} — {auth.insurance_name}</h2>
+                                        {auth.authorization_number && (
+                                            <span className="badge badge-active">#{auth.authorization_number}</span>
+                                        )}
                                     </div>
                                     <div className="card-body">
                                         <p className="auth-dates">
-                                            {formatDate(auth.startDate)} - {formatDate(auth.endDate)}
+                                            {formatDate(auth.start_date)} - {formatDate(auth.end_date)}
                                         </p>
                                         <div className="auth-progress">
                                             <div className="auth-progress-header">
-                                                <span>{auth.usedUnits} / {auth.totalUnits} units</span>
+                                                <span>{auth.units_used} / {auth.units_approved} units</span>
                                                 <span className={percent >= 80 ? 'text-red-500' : 'text-teal-600'}>{percent}%</span>
                                             </div>
                                             <div className="auth-progress-bar">
@@ -449,7 +609,13 @@ export default function ClientDetailPage() {
                                     </div>
                                 </div>
                             )
-                        })}
+                        }) : (
+                            <EmptyState
+                                variant="no-data"
+                                title="No authorizations"
+                                description="Authorizations will appear here once added."
+                            />
+                        )}
                     </div>
                 )}
 
@@ -460,43 +626,38 @@ export default function ClientDetailPage() {
                             <h2 className="card-title">Session Notes</h2>
                             <button
                                 className="btn-primary btn-sm"
-                                onClick={() => window.location.href = `/notes/new?client=${id}`}
+                                onClick={() => navigate(`/notes/new?client=${id}`)}
                             >
                                 <Plus size={16} weight="bold" /> New Note
                             </button>
                         </div>
                         <div className="card-body p-0">
-                            <table className="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>Date</th>
-                                        <th>Type</th>
-                                        <th>CPT Code</th>
-                                        <th>Duration</th>
-                                        <th>Units</th>
-                                        <th>Provider</th>
-                                        <th>Status</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {client.recentSessions.map(session => (
-                                        <tr key={session.id}>
-                                            <td>{formatDate(session.date)}</td>
-                                            <td>{session.type}</td>
-                                            <td><span className="cpt-code">{session.cptCode}</span></td>
-                                            <td>{session.duration}</td>
-                                            <td>{session.units}</td>
-                                            <td>{session.provider}</td>
-                                            <td>
-                                                <span className={`badge badge-${session.status === 'completed' ? 'active' : 'error'}`}>
-                                                    {session.status === 'completed' ? 'Completed' : 'No-show'}
-                                                </span>
-                                            </td>
+                            {recentSessions.length > 0 ? (
+                                <table className="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Service Code</th>
+                                            <th>Provider</th>
+                                            <th>Status</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                            {client.recentSessions.length === 0 && (
+                                    </thead>
+                                    <tbody>
+                                        {recentSessions.map(session => (
+                                            <tr key={session.id}>
+                                                <td>{formatDate(session.date)}</td>
+                                                <td><span className="cpt-code">{session.service_code}</span></td>
+                                                <td>{session.provider_name}</td>
+                                                <td>
+                                                    <span className={`badge badge-${session.status === 'completed' ? 'active' : 'error'}`}>
+                                                        {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : (
                                 <EmptyState
                                     variant="no-data"
                                     title="No session notes yet"
@@ -517,38 +678,42 @@ export default function ClientDetailPage() {
                             </button>
                         </div>
                         <div className="card-body p-0">
-                            <div className="documents-grid">
-                                {client.documents.map(doc => (
-                                    <div key={doc.id} className="document-card">
-                                        <div className="document-icon">
-                                            {getFileIcon(doc.type)}
+                            {documents.length > 0 ? (
+                                <div className="documents-grid">
+                                    {documents.map((doc: ClientDocument) => (
+                                        <div key={doc.id} className="document-card">
+                                            <div className="document-icon">
+                                                {getFileIcon(doc.file_type)}
+                                            </div>
+                                            <div className="document-info">
+                                                <p className="document-name">{doc.file_name}</p>
+                                                <p className="document-meta">{formatFileSize(doc.file_size)} · {formatDate(doc.created_at)}</p>
+                                            </div>
+                                            <div className="document-actions">
+                                                <button className="btn-icon-sm" title="Preview" onClick={() => doc.file_path && window.open(doc.file_path, '_blank')}>
+                                                    <Eye size={16} />
+                                                </button>
+                                                <button className="btn-icon-sm" title="Download" onClick={() => {
+                                                    if (!doc.file_path) return
+                                                    const a = document.createElement('a')
+                                                    a.href = doc.file_path
+                                                    a.download = doc.file_name
+                                                    a.target = '_blank'
+                                                    a.click()
+                                                }}>
+                                                    <DownloadSimple size={16} />
+                                                </button>
+                                                <button className="btn-icon-sm danger" title="Delete" onClick={() => {
+                                                    setDeleteDocId(doc.id)
+                                                    setDeleteDocName(doc.file_name)
+                                                }}>
+                                                    <Trash size={16} />
+                                                </button>
+                                            </div>
                                         </div>
-                                        <div className="document-info">
-                                            <p className="document-name">{doc.name}</p>
-                                            <p className="document-meta">{doc.size} · {formatDate(doc.uploadedAt)}</p>
-                                        </div>
-                                        <div className="document-actions">
-                                            <button className="btn-icon-sm" title="Preview" onClick={() => window.open(`#preview-${doc.name}`, '_blank')}>
-                                                <Eye size={16} />
-                                            </button>
-                                            <button className="btn-icon-sm" title="Download" onClick={() => {
-                                                const a = document.createElement('a')
-                                                a.href = '#'
-                                                a.download = doc.name
-                                                a.click()
-                                            }}>
-                                                <DownloadSimple size={16} />
-                                            </button>
-                                            <button className="btn-icon-sm danger" title="Delete" onClick={() => {
-                                                setDeleteDocName(doc.name)
-                                            }}>
-                                                <Trash size={16} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                            {client.documents.length === 0 && (
+                                    ))}
+                                </div>
+                            ) : (
                                 <EmptyState
                                     variant="no-data"
                                     title="No documents uploaded"
@@ -567,7 +732,7 @@ export default function ClientDetailPage() {
                             <div className="billing-balance">
                                 <div>
                                     <p className="balance-label">Current Balance</p>
-                                    <p className="balance-value">{formatCurrency(client.balance)}</p>
+                                    <p className="balance-value">{formatCurrency(balance)}</p>
                                 </div>
                                 <button className="btn-primary" onClick={() => setIsPaymentModalOpen(true)}>
                                     <Receipt size={18} weight="bold" /> Record Payment
@@ -592,12 +757,16 @@ export default function ClientDetailPage() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {client.invoices.map(inv => (
+                                        {invoices.map(inv => (
                                             <tr key={inv.id}>
-                                                <td><span className="invoice-link">{inv.number}</span></td>
-                                                <td>{formatDate(inv.date)}</td>
-                                                <td>{formatCurrency(inv.amount)}</td>
-                                                <td>{formatCurrency(inv.paid)}</td>
+                                                <td>
+                                                    <Link to={`/billing/invoices/${inv.id}`} className="invoice-link">
+                                                        {inv.invoice_number}
+                                                    </Link>
+                                                </td>
+                                                <td>{formatDate(inv.invoice_date)}</td>
+                                                <td>{formatCurrency(inv.total_amount)}</td>
+                                                <td>{formatCurrency(inv.paid_amount)}</td>
                                                 <td>
                                                     <span className={`badge badge-${inv.status === 'paid' ? 'active' : 'pending'}`}>
                                                         {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
@@ -605,6 +774,9 @@ export default function ClientDetailPage() {
                                                 </td>
                                             </tr>
                                         ))}
+                                        {invoices.length === 0 && (
+                                            <tr><td colSpan={5} className="text-center text-muted">No invoices</td></tr>
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
@@ -626,14 +798,88 @@ export default function ClientDetailPage() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {client.payments.map(pmt => (
+                                        {payments.map(pmt => (
                                             <tr key={pmt.id}>
-                                                <td>{formatDate(pmt.date)}</td>
+                                                <td>{formatDate(pmt.payment_date)}</td>
                                                 <td className="text-green-600 font-semibold">{formatCurrency(pmt.amount)}</td>
-                                                <td>{pmt.method}</td>
-                                                <td><span className="reference">{pmt.reference}</span></td>
+                                                <td>{pmt.payment_method}</td>
+                                                <td><span className="reference">{pmt.reference_number || '—'}</span></td>
                                             </tr>
                                         ))}
+                                        {payments.length === 0 && (
+                                            <tr><td colSpan={4} className="text-center text-muted">No payments</td></tr>
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        {/* Claims */}
+                        <div className="card">
+                            <div className="card-header">
+                                <h2 className="card-title">Claims</h2>
+                            </div>
+                            <div className="card-body p-0">
+                                <table className="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Claim #</th>
+                                            <th>Payer</th>
+                                            <th>Service</th>
+                                            <th>Date</th>
+                                            <th>Billed</th>
+                                            <th>Ins. Paid</th>
+                                            <th>Patient</th>
+                                            <th>Write-off</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {claims.map(claim => (
+                                            <tr key={claim.id}>
+                                                <td><span className="invoice-link">{claim.claim_number}</span></td>
+                                                <td>{claim.payer_name}</td>
+                                                <td>{claim.service_code || '—'}</td>
+                                                <td>{formatDate(claim.session_date)}</td>
+                                                <td>{formatCurrency(claim.billed_amount)}</td>
+                                                <td className={claim.insurance_paid > 0 ? 'text-green-600 font-semibold' : ''}>{formatCurrency(claim.insurance_paid)}</td>
+                                                <td>{formatCurrency(claim.patient_responsibility)}</td>
+                                                <td className={claim.write_off_amount > 0 ? 'text-orange-500' : ''}>{formatCurrency(claim.write_off_amount)}</td>
+                                                <td>
+                                                    <span className={`badge badge-${claim.status === 'paid' ? 'active' : claim.status === 'denied' ? 'error' : 'pending'}`}>
+                                                        {claim.status.charAt(0).toUpperCase() + claim.status.slice(1)}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <div className="flex gap-1">
+                                                        <button
+                                                            className="btn-sm btn-secondary"
+                                                            title="Post Payment"
+                                                            onClick={() => {
+                                                                setSelectedClaimId(claim.id)
+                                                                setIsPostPaymentModalOpen(true)
+                                                            }}
+                                                        >
+                                                            <ClipboardText size={14} weight="bold" />
+                                                        </button>
+                                                        <button
+                                                            className="btn-sm btn-secondary"
+                                                            title="Write Off"
+                                                            onClick={() => {
+                                                                setSelectedClaimId(claim.id)
+                                                                setIsWriteOffModalOpen(true)
+                                                            }}
+                                                        >
+                                                            <Eraser size={14} weight="bold" />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                        {claims.length === 0 && (
+                                            <tr><td colSpan={10} className="text-center text-muted">No claims</td></tr>
+                                        )}
                                     </tbody>
                                 </table>
                             </div>
@@ -650,45 +896,51 @@ export default function ClientDetailPage() {
                 size="sm"
             >
                 <div className="upload-form">
-                    <div className="upload-dropzone">
+                    <div className="upload-dropzone" onClick={() => fileInputRef.current?.click()}>
                         <UploadSimple size={48} weight="duotone" className="upload-icon" />
                         <p className="upload-text">Drag & drop files here</p>
                         <p className="upload-subtext">or click to browse</p>
-                        <input type="file" className="upload-input" />
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            className="upload-input"
+                            style={{ display: 'none' }}
+                            onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) handleUploadDocument(file)
+                            }}
+                        />
                     </div>
                     <div className="form-actions">
                         <button className="btn-secondary" onClick={() => setIsUploadModalOpen(false)}>Cancel</button>
-                        <button className="btn-primary" onClick={() => {
-                            // Mock upload success
-                            setIsUploadModalOpen(false)
-                        }}>Upload</button>
                     </div>
                 </div>
             </Modal>
 
-            {/* Edit Client Modal - Using reusable component */}
+            {/* Edit Client Modal */}
             <EditClientModal
                 isOpen={isEditModalOpen}
                 onClose={() => setIsEditModalOpen(false)}
-                onSubmit={() => {
+                onSubmit={async () => {
                     toast.success('Client updated successfully')
                     setIsEditModalOpen(false)
+                    refreshClient()
                 }}
                 clientData={{
                     id: Number(id),
-                    firstName: client.firstName,
-                    lastName: client.lastName,
-                    dateOfBirth: client.dateOfBirth,
-                    gender: client.gender,
-                    phone: client.phone,
-                    email: client.email,
-                    address: client.address,
-                    city: client.city,
-                    state: client.state,
-                    zipCode: client.zipCode,
-                    insuranceName: client.insurance.primary.name,
-                    memberId: client.insurance.primary.memberId,
-                    groupNumber: client.insurance.primary.groupNumber
+                    firstName: client.first_name,
+                    lastName: client.last_name,
+                    dateOfBirth: client.date_of_birth,
+                    gender: client.gender || '',
+                    phone: client.phone || '',
+                    email: client.email || '',
+                    address: client.address || '',
+                    city: client.city || '',
+                    state: client.state || '',
+                    zipCode: client.zip_code || '',
+                    insuranceName: client.insurance_primary_name || '',
+                    memberId: client.insurance_primary_id || '',
+                    groupNumber: client.insurance_primary_group || ''
                 }}
             />
 
@@ -702,52 +954,216 @@ export default function ClientDetailPage() {
                 <div className="payment-form">
                     <div className="payment-info">
                         <p className="payment-info-label">Client</p>
-                        <p className="payment-info-value">{client.firstName} {client.lastName}</p>
+                        <p className="payment-info-value">{client.first_name} {client.last_name}</p>
                     </div>
                     <div className="payment-info">
                         <p className="payment-info-label">Current Balance</p>
-                        <p className="payment-info-value balance">{formatCurrency(client.balance)}</p>
+                        <p className="payment-info-value balance">{formatCurrency(balance)}</p>
                     </div>
                     <div className="form-row">
                         <div className="form-group">
                             <label className="form-label">Payment Amount</label>
-                            <input type="number" className="form-input" placeholder="0.00" step="0.01" />
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">Payment Date</label>
-                            <input type="date" className="form-input" defaultValue={new Date().toISOString().split('T')[0]} />
+                            <input
+                                type="number"
+                                className="form-input"
+                                placeholder="0.00"
+                                step="0.01"
+                                value={paymentAmount}
+                                onChange={(e) => setPaymentAmount(e.target.value)}
+                            />
                         </div>
                     </div>
                     <div className="form-group">
                         <label className="form-label">Payment Method</label>
-                        <select className="form-select">
-                            <option value="">Select method...</option>
-                            <option value="cash">Cash</option>
-                            <option value="check">Check</option>
-                            <option value="credit">Credit Card</option>
-                            <option value="insurance">Insurance Payment</option>
+                        <select
+                            className="form-select"
+                            value={paymentMethod}
+                            onChange={(e) => setPaymentMethod(e.target.value)}
+                        >
+                            <option value="credit_card">Credit Card</option>
                             <option value="eft">EFT/ACH</option>
+                            <option value="check">Check</option>
+                            <option value="cash">Cash</option>
+                            <option value="other">Other</option>
                         </select>
                     </div>
                     <div className="form-group">
                         <label className="form-label">Reference / Check Number</label>
-                        <input type="text" className="form-input" placeholder="e.g., Check #1234 or EOB-12345" />
+                        <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g., Check #1234 or EOB-12345"
+                            value={paymentReference}
+                            onChange={(e) => setPaymentReference(e.target.value)}
+                        />
                     </div>
                     <div className="form-actions">
                         <button className="btn-secondary" onClick={() => setIsPaymentModalOpen(false)}>Cancel</button>
-                        <button className="btn-primary" onClick={() => setIsPaymentModalOpen(false)}>Record Payment</button>
+                        <button
+                            className="btn-primary"
+                            onClick={handleRecordPayment}
+                            disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
+                        >
+                            Record Payment
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Post Payment to Claim Modal */}
+            <Modal
+                isOpen={isPostPaymentModalOpen}
+                onClose={() => { setIsPostPaymentModalOpen(false); setSelectedClaimId(null) }}
+                title="Post Payment to Claim"
+                size="md"
+            >
+                <div className="payment-form">
+                    {selectedClaimId && (() => {
+                        const claim = claims.find(c => c.id === selectedClaimId)
+                        if (!claim) return null
+                        return (
+                            <>
+                                <div className="payment-info">
+                                    <p className="payment-info-label">Claim</p>
+                                    <p className="payment-info-value">{claim.claim_number} — {claim.payer_name}</p>
+                                </div>
+                                <div className="payment-info">
+                                    <p className="payment-info-label">Billed Amount</p>
+                                    <p className="payment-info-value balance">{formatCurrency(claim.billed_amount)}</p>
+                                </div>
+                            </>
+                        )
+                    })()}
+                    <div className="form-row">
+                        <div className="form-group">
+                            <label className="form-label">Insurance Paid</label>
+                            <input
+                                type="number"
+                                className="form-input"
+                                placeholder="0.00"
+                                step="0.01"
+                                value={postInsurancePaid}
+                                onChange={(e) => setPostInsurancePaid(e.target.value)}
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Patient Responsibility</label>
+                            <input
+                                type="number"
+                                className="form-input"
+                                placeholder="0.00"
+                                step="0.01"
+                                value={postPatientResp}
+                                onChange={(e) => setPostPatientResp(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="form-row">
+                        <div className="form-group">
+                            <label className="form-label">Write-off / Adjustment</label>
+                            <input
+                                type="number"
+                                className="form-input"
+                                placeholder="0.00"
+                                step="0.01"
+                                value={postWriteOff}
+                                onChange={(e) => setPostWriteOff(e.target.value)}
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">Reference # (EOB)</label>
+                            <input
+                                type="text"
+                                className="form-input"
+                                placeholder="EOB-2026-0042"
+                                value={postReference}
+                                onChange={(e) => setPostReference(e.target.value)}
+                            />
+                        </div>
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Notes</label>
+                        <textarea
+                            className="form-input"
+                            rows={2}
+                            placeholder="Contractual adjustment per fee schedule..."
+                            value={postNotes}
+                            onChange={(e) => setPostNotes(e.target.value)}
+                        />
+                    </div>
+                    <div className="form-actions">
+                        <button className="btn-secondary" onClick={() => { setIsPostPaymentModalOpen(false); setSelectedClaimId(null) }}>Cancel</button>
+                        <button className="btn-primary" onClick={handlePostClaimPayment}>Post Payment</button>
+                    </div>
+                </div>
+            </Modal>
+
+            {/* Write-Off Modal */}
+            <Modal
+                isOpen={isWriteOffModalOpen}
+                onClose={() => { setIsWriteOffModalOpen(false); setSelectedClaimId(null) }}
+                title="Write Off Balance"
+                size="sm"
+            >
+                <div className="payment-form">
+                    {selectedClaimId && (() => {
+                        const claim = claims.find(c => c.id === selectedClaimId)
+                        if (!claim) return null
+                        return (
+                            <div className="payment-info">
+                                <p className="payment-info-label">Claim</p>
+                                <p className="payment-info-value">{claim.claim_number} — Balance: {formatCurrency(claim.billed_amount - claim.insurance_paid - claim.write_off_amount)}</p>
+                            </div>
+                        )
+                    })()}
+                    <div className="form-group">
+                        <label className="form-label">Write-off Amount</label>
+                        <input
+                            type="number"
+                            className="form-input"
+                            placeholder="0.00"
+                            step="0.01"
+                            value={writeOffAmount}
+                            onChange={(e) => setWriteOffAmount(e.target.value)}
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Reason</label>
+                        <select
+                            className="form-select"
+                            value={writeOffReason}
+                            onChange={(e) => setWriteOffReason(e.target.value)}
+                        >
+                            <option value="">Select reason...</option>
+                            <option value="contractual">Contractual Adjustment</option>
+                            <option value="timely_filing">Timely Filing</option>
+                            <option value="uncollectible">Uncollectible</option>
+                            <option value="charity">Charity / Pro Bono</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Notes</label>
+                        <textarea
+                            className="form-input"
+                            rows={2}
+                            placeholder="Per Blue Cross fee schedule..."
+                            value={writeOffNotes}
+                            onChange={(e) => setWriteOffNotes(e.target.value)}
+                        />
+                    </div>
+                    <div className="form-actions">
+                        <button className="btn-secondary" onClick={() => { setIsWriteOffModalOpen(false); setSelectedClaimId(null) }}>Cancel</button>
+                        <button className="btn-primary" onClick={handleWriteOff}>Apply Write-off</button>
                     </div>
                 </div>
             </Modal>
 
             {/* Delete Document Confirm Dialog */}
             <ConfirmDialog
-                isOpen={deleteDocName !== null}
-                onClose={() => setDeleteDocName(null)}
-                onConfirm={() => {
-                    toast.success(`${deleteDocName} deleted`)
-                    setDeleteDocName(null)
-                }}
+                isOpen={deleteDocId !== null}
+                onClose={() => { setDeleteDocId(null); setDeleteDocName(null) }}
+                onConfirm={handleDeleteDocument}
                 title="Delete Document"
                 message={`Are you sure you want to delete "${deleteDocName}"? This action cannot be undone.`}
                 confirmLabel="Delete"

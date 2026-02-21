@@ -1,12 +1,20 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { PageSkeleton } from '../components/ui'
+import { appointmentsApi, clientsApi, usersApi } from '../api'
+import { useAuth } from '../context'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin from '@fullcalendar/interaction'
+import type {
+    Appointment,
+    CreateAppointmentPayload,
+    Client,
+    User
+} from '../types'
 import {
     Plus,
     CaretLeft,
@@ -17,220 +25,7 @@ import {
 } from '@phosphor-icons/react'
 import { Modal, ConfirmDialog } from '../components/ui'
 
-// Appointment type
-interface Appointment {
-    id: string
-    title: string
-    start: string
-    end: string
-    clientId: number
-    clientName: string
-    providerId: number
-    providerName: string
-    locationId: number
-    locationName: string
-    type: 'aba_session' | 'parent_training' | 'assessment' | 'supervision'
-    status: 'scheduled' | 'completed' | 'cancelled' | 'no_show'
-    cptCode: string
-    units: number
-    authorizationId?: number
-    notes?: string
-    isRecurring?: boolean
-    recurringPattern?: string
-}
-
-// Generate mock data for current week
-const getThisWeekDates = () => {
-    const today = new Date()
-    const monday = new Date(today)
-    monday.setDate(today.getDate() - today.getDay() + 1)
-    return Array.from({ length: 7 }, (_, i) => {
-        const date = new Date(monday)
-        date.setDate(monday.getDate() + i)
-        return date.toISOString().split('T')[0]
-    })
-}
-
-const weekDates = getThisWeekDates()
-
-// Mock appointments for this week
-const initialAppointments: Appointment[] = [
-    {
-        id: '1',
-        title: 'Sarah Johnson - ABA Session',
-        start: `${weekDates[0]}T09:00:00`,
-        end: `${weekDates[0]}T11:00:00`,
-        clientId: 1,
-        clientName: 'Sarah Johnson',
-        providerId: 1,
-        providerName: 'Dr. Smith',
-        locationId: 1,
-        locationName: 'Main Office',
-        type: 'aba_session',
-        status: 'scheduled',
-        cptCode: '97153',
-        units: 8
-    },
-    {
-        id: '2',
-        title: 'Michael Chen - ABA Session',
-        start: `${weekDates[0]}T13:00:00`,
-        end: `${weekDates[0]}T15:00:00`,
-        clientId: 2,
-        clientName: 'Michael Chen',
-        providerId: 1,
-        providerName: 'Dr. Smith',
-        locationId: 2,
-        locationName: 'North Clinic',
-        type: 'aba_session',
-        status: 'scheduled',
-        cptCode: '97153',
-        units: 8
-    },
-    {
-        id: '3',
-        title: 'Emily Davis - Parent Training',
-        start: `${weekDates[1]}T10:00:00`,
-        end: `${weekDates[1]}T11:00:00`,
-        clientId: 3,
-        clientName: 'Emily Davis',
-        providerId: 2,
-        providerName: 'Dr. Williams',
-        locationId: 1,
-        locationName: 'Main Office',
-        type: 'parent_training',
-        status: 'scheduled',
-        cptCode: '97156',
-        units: 4
-    },
-    {
-        id: '4',
-        title: 'James Wilson - ABA Session',
-        start: `${weekDates[1]}T14:00:00`,
-        end: `${weekDates[1]}T16:00:00`,
-        clientId: 4,
-        clientName: 'James Wilson',
-        providerId: 1,
-        providerName: 'Dr. Smith',
-        locationId: 3,
-        locationName: 'South Branch',
-        type: 'aba_session',
-        status: 'cancelled',
-        cptCode: '97153',
-        units: 8
-    },
-    {
-        id: '5',
-        title: 'Lisa Thompson - Assessment',
-        start: `${weekDates[2]}T09:00:00`,
-        end: `${weekDates[2]}T12:00:00`,
-        clientId: 5,
-        clientName: 'Lisa Thompson',
-        providerId: 3,
-        providerName: 'Dr. Martinez',
-        locationId: 1,
-        locationName: 'Main Office',
-        type: 'assessment',
-        status: 'scheduled',
-        cptCode: '97151',
-        units: 12
-    },
-    {
-        id: '6',
-        title: 'Sarah Johnson - ABA Session',
-        start: `${weekDates[2]}T14:00:00`,
-        end: `${weekDates[2]}T16:00:00`,
-        clientId: 1,
-        clientName: 'Sarah Johnson',
-        providerId: 1,
-        providerName: 'Dr. Smith',
-        locationId: 1,
-        locationName: 'Main Office',
-        type: 'aba_session',
-        status: 'completed',
-        cptCode: '97153',
-        units: 8
-    },
-    {
-        id: '7',
-        title: 'David Brown - ABA Session',
-        start: `${weekDates[3]}T09:00:00`,
-        end: `${weekDates[3]}T11:00:00`,
-        clientId: 6,
-        clientName: 'David Brown',
-        providerId: 2,
-        providerName: 'Dr. Williams',
-        locationId: 2,
-        locationName: 'North Clinic',
-        type: 'aba_session',
-        status: 'no_show',
-        cptCode: '97153',
-        units: 8
-    },
-    {
-        id: '8',
-        title: 'Michael Chen - Parent Training',
-        start: `${weekDates[4]}T10:00:00`,
-        end: `${weekDates[4]}T11:30:00`,
-        clientId: 2,
-        clientName: 'Michael Chen',
-        providerId: 1,
-        providerName: 'Dr. Smith',
-        locationId: 1,
-        locationName: 'Main Office',
-        type: 'parent_training',
-        status: 'scheduled',
-        cptCode: '97156',
-        units: 6
-    },
-]
-
-// Mock providers for filter
-const providers = [
-    { id: 0, name: 'All Providers', npi: '' },
-    { id: 1, name: 'Dr. Smith', npi: '1234567890' },
-    { id: 2, name: 'Dr. Williams', npi: '2345678901' },
-    { id: 3, name: 'Dr. Martinez', npi: '3456789012' },
-]
-
-// NPI list for admin filter
-const npiList = [
-    { npi: '', name: 'All NPIs' },
-    { npi: '1234567890', name: '1234567890 (Dr. Smith)' },
-    { npi: '2345678901', name: '2345678901 (Dr. Williams)' },
-    { npi: '3456789012', name: '3456789012 (Dr. Martinez)' },
-]
-
-// Mock locations for filter
-const locations = [
-    { id: 0, name: 'All Locations' },
-    { id: 1, name: 'Main Office' },
-    { id: 2, name: 'North Clinic' },
-    { id: 3, name: 'South Branch' },
-]
-
-// Mock clients for scheduling
-const clients = [
-    { id: 1, name: 'Sarah Johnson' },
-    { id: 2, name: 'Michael Chen' },
-    { id: 3, name: 'Emily Davis' },
-    { id: 4, name: 'James Wilson' },
-    { id: 5, name: 'Lisa Thompson' },
-    { id: 6, name: 'David Brown' },
-]
-
-// Mock authorizations (per client)
-const authorizations = [
-    { id: 1, clientId: 1, name: 'Auth #12345 - 120 units remaining', remaining: 120 },
-    { id: 2, clientId: 1, name: 'Auth #12346 - 40 units remaining', remaining: 40 },
-    { id: 3, clientId: 2, name: 'Auth #22345 - 80 units remaining', remaining: 80 },
-    { id: 4, clientId: 3, name: 'Auth #32345 - 60 units remaining', remaining: 60 },
-    { id: 5, clientId: 4, name: 'Auth #42345 - 100 units remaining', remaining: 100 },
-    { id: 6, clientId: 5, name: 'Auth #52345 - 50 units remaining', remaining: 50 },
-    { id: 7, clientId: 6, name: 'Auth #62345 - 90 units remaining', remaining: 90 },
-]
-
-// CPT Codes
+// CPT Codes (static reference)
 const cptCodes = [
     { code: '97151', description: 'Behavior Assessment', defaultUnits: 4 },
     { code: '97153', description: 'Adaptive Behavior Treatment', defaultUnits: 8 },
@@ -243,10 +38,11 @@ const cptCodes = [
 // Status color mapping
 const getStatusColor = (status: string) => {
     switch (status) {
-        case 'scheduled': return '#0D9488' // teal
-        case 'completed': return '#059669' // green
-        case 'cancelled': return '#DC2626' // red
-        case 'no_show': return '#D97706' // amber
+        case 'scheduled': return '#0D9488'
+        case 'attended': return '#059669'
+        case 'completed': return '#059669'
+        case 'cancelled': return '#DC2626'
+        case 'no_show': return '#D97706'
         default: return '#0D9488'
     }
 }
@@ -259,17 +55,29 @@ const sessionTypeLabels: Record<string, string> = {
     supervision: 'Supervision'
 }
 
+// Helper: get the client full name from an appointment
+function aptClientName(apt: Appointment): string {
+    return `${apt.client.first_name} ${apt.client.last_name}`
+}
+
+// Helper: get the provider full name from an appointment
+function aptProviderName(apt: Appointment): string {
+    return `${apt.provider.first_name} ${apt.provider.last_name}`
+}
+
 export default function CalendarPage() {
     const [searchParams] = useSearchParams()
+    const navigate = useNavigate()
+    const { user } = useAuth()
     const calendarRef = useRef<FullCalendar>(null)
     const [isLoading, setIsLoading] = useState(true)
-    const [appointments, setAppointments] = useState<Appointment[]>(initialAppointments)
+    const [appointments, setAppointments] = useState<Appointment[]>([])
+    const [clientsList, setClientsList] = useState<Client[]>([])
+    const [providersList, setProvidersList] = useState<User[]>([])
     const [currentView, setCurrentView] = useState<'dayGridMonth' | 'timeGridWeek' | 'timeGridDay'>('timeGridWeek')
-    const [providerFilter, setProviderFilter] = useState(0)
-    const [locationFilter, setLocationFilter] = useState(0)
-    const [npiFilter, setNpiFilter] = useState('')
-    const [isAdmin] = useState(true) // Mock admin status - in real app check user role
+    const [providerFilter, setProviderFilter] = useState('')
     const [calendarTitle, setCalendarTitle] = useState('')
+    const isAdmin = user?.role === 'admin' || user?.role === 'owner'
 
     // Modal states
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false)
@@ -277,29 +85,86 @@ export default function CalendarPage() {
     const [isEditMode, setIsEditMode] = useState(false)
     const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
     const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
+    const [isSaving, setIsSaving] = useState(false)
 
     // New appointment form
     const [formData, setFormData] = useState({
         clientId: '',
         providerId: '',
-        locationId: '',
-        type: 'aba_session',
-        cptCode: '97153',
+        serviceCode: '97153',
         units: 8,
-        authorizationId: '',
         date: '',
         startTime: '09:00',
         endTime: '11:00',
         notes: '',
         isRecurring: false,
-        recurringPattern: 'weekly',
+        recurringPattern: 'weekly' as 'daily' | 'weekly' | 'biweekly' | 'monthly',
         recurringEndDate: ''
     })
 
-    // Get authorizations for selected client
-    const clientAuthorizations = formData.clientId
-        ? authorizations.filter(a => a.clientId === Number(formData.clientId))
-        : []
+    // Get date range from calendar view for fetching
+    const getDateRange = useCallback(() => {
+        const api = calendarRef.current?.getApi()
+        if (!api) {
+            const now = new Date()
+            const start = new Date(now)
+            start.setDate(now.getDate() - now.getDay())
+            const end = new Date(start)
+            end.setDate(start.getDate() + 7)
+            return {
+                start_date: start.toISOString().split('T')[0],
+                end_date: end.toISOString().split('T')[0]
+            }
+        }
+        return {
+            start_date: api.view.activeStart.toISOString().split('T')[0],
+            end_date: api.view.activeEnd.toISOString().split('T')[0]
+        }
+    }, [])
+
+    // Fetch appointments
+    const fetchAppointments = useCallback(async () => {
+        try {
+            const range = getDateRange()
+            const filters: Record<string, string> = {
+                start_date: range.start_date,
+                end_date: range.end_date,
+            }
+            if (providerFilter) filters.provider_id = providerFilter
+            const data = await appointmentsApi.getAll(filters)
+            setAppointments(data)
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to load appointments')
+        }
+    }, [getDateRange, providerFilter])
+
+    // Initial data load
+    useEffect(() => {
+        const loadData = async () => {
+            setIsLoading(true)
+            try {
+                // Fetch clients and providers in parallel
+                const [clientsRes, providersRes] = await Promise.all([
+                    clientsApi.getAll({ page_size: 500 }),
+                    usersApi.getAll({ role: 'provider', page_size: 500 }),
+                ])
+                setClientsList(clientsRes.results)
+                setProvidersList(providersRes.results)
+            } catch (err: any) {
+                toast.error('Failed to load filter data')
+            } finally {
+                setIsLoading(false)
+            }
+        }
+        loadData()
+    }, [])
+
+    // Fetch appointments when calendar view or filters change
+    useEffect(() => {
+        if (!isLoading) {
+            fetchAppointments()
+        }
+    }, [fetchAppointments, isLoading])
 
     // Check for client preselection from URL
     useEffect(() => {
@@ -321,25 +186,12 @@ export default function CalendarPage() {
         updateTitle()
     }, [currentView])
 
-    // Loading state
-    useEffect(() => {
-        const timer = setTimeout(() => setIsLoading(false), 800)
-        return () => clearTimeout(timer)
-    }, [])
-
-    // Filter appointments by provider and location
-    const filteredAppointments = appointments.filter(apt => {
-        const matchesProvider = providerFilter === 0 || apt.providerId === providerFilter
-        const matchesLocation = locationFilter === 0 || apt.locationId === locationFilter
-        return matchesProvider && matchesLocation
-    })
-
-    // Convert to FullCalendar events
-    const calendarEvents = filteredAppointments.map(apt => ({
+    // Convert appointments to FullCalendar events
+    const calendarEvents = appointments.map(apt => ({
         id: apt.id,
-        title: apt.title,
-        start: apt.start,
-        end: apt.end,
+        title: `${aptClientName(apt)} - ${apt.service_code || 'Session'}`,
+        start: apt.start_time,
+        end: apt.end_time,
         backgroundColor: getStatusColor(apt.status),
         borderColor: getStatusColor(apt.status),
         extendedProps: apt
@@ -349,14 +201,17 @@ export default function CalendarPage() {
     const goToToday = () => {
         calendarRef.current?.getApi().today()
         setCalendarTitle(calendarRef.current?.getApi().view.title || '')
+        fetchAppointments()
     }
     const goToPrev = () => {
         calendarRef.current?.getApi().prev()
         setCalendarTitle(calendarRef.current?.getApi().view.title || '')
+        fetchAppointments()
     }
     const goToNext = () => {
         calendarRef.current?.getApi().next()
         setCalendarTitle(calendarRef.current?.getApi().view.title || '')
+        fetchAppointments()
     }
 
     // Change view
@@ -364,6 +219,7 @@ export default function CalendarPage() {
         setCurrentView(view)
         calendarRef.current?.getApi().changeView(view)
         setCalendarTitle(calendarRef.current?.getApi().view.title || '')
+        fetchAppointments()
     }
 
     // Handle date select (create appointment)
@@ -373,11 +229,8 @@ export default function CalendarPage() {
         setFormData({
             clientId: '',
             providerId: '',
-            locationId: '',
-            type: 'aba_session',
-            cptCode: '97153',
+            serviceCode: '97153',
             units: 8,
-            authorizationId: '',
             date: selectInfo.startStr.split('T')[0],
             startTime: selectInfo.start.toTimeString().slice(0, 5),
             endTime: selectInfo.end.toTimeString().slice(0, 5),
@@ -393,31 +246,32 @@ export default function CalendarPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleEventClick = (clickInfo: any) => {
         const apt = clickInfo.event.extendedProps as Appointment
-        setSelectedAppointment({ ...apt, id: clickInfo.event.id })
+        setSelectedAppointment(apt)
         setIsViewModalOpen(true)
     }
 
     // Handle event drag (reschedule)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handleEventDrop = (dropInfo: any) => {
+    const handleEventDrop = async (dropInfo: any) => {
         const event = dropInfo.event
         const apt = event.extendedProps as Appointment
 
-        // Only allow rescheduling if scheduled
         if (apt.status !== 'scheduled') {
             dropInfo.revert()
             return
         }
 
-        setAppointments(prev => prev.map(a =>
-            a.id === event.id
-                ? {
-                    ...a,
-                    start: event.startStr,
-                    end: event.endStr
-                }
-                : a
-        ))
+        try {
+            await appointmentsApi.update(apt.id, {
+                start_time: event.startStr,
+                end_time: event.endStr,
+            })
+            toast.success('Appointment rescheduled')
+            fetchAppointments()
+        } catch (err: any) {
+            dropInfo.revert()
+            toast.error(err?.response?.data?.detail || 'Failed to reschedule')
+        }
     }
 
     // Handle add appointment button
@@ -427,11 +281,8 @@ export default function CalendarPage() {
         setFormData({
             clientId: '',
             providerId: '',
-            locationId: '',
-            type: 'aba_session',
-            cptCode: '97153',
+            serviceCode: '97153',
             units: 8,
-            authorizationId: '',
             date: now.toISOString().split('T')[0],
             startTime: '09:00',
             endTime: '11:00',
@@ -448,20 +299,17 @@ export default function CalendarPage() {
         if (!selectedAppointment) return
         setIsEditMode(true)
         setFormData({
-            clientId: String(selectedAppointment.clientId),
-            providerId: String(selectedAppointment.providerId),
-            locationId: String(selectedAppointment.locationId),
-            type: selectedAppointment.type,
-            cptCode: selectedAppointment.cptCode,
-            units: selectedAppointment.units,
-            authorizationId: selectedAppointment.authorizationId ? String(selectedAppointment.authorizationId) : '',
-            date: selectedAppointment.start.split('T')[0],
-            startTime: selectedAppointment.start.split('T')[1].slice(0, 5),
-            endTime: selectedAppointment.end.split('T')[1].slice(0, 5),
+            clientId: selectedAppointment.client.id,
+            providerId: selectedAppointment.provider.id,
+            serviceCode: selectedAppointment.service_code || '97153',
+            units: selectedAppointment.units || 8,
+            date: selectedAppointment.start_time.split('T')[0],
+            startTime: new Date(selectedAppointment.start_time).toTimeString().slice(0, 5),
+            endTime: new Date(selectedAppointment.end_time).toTimeString().slice(0, 5),
             notes: selectedAppointment.notes || '',
-            isRecurring: selectedAppointment.isRecurring || false,
-            recurringPattern: selectedAppointment.recurringPattern || 'weekly',
-            recurringEndDate: ''
+            isRecurring: selectedAppointment.is_recurring,
+            recurringPattern: selectedAppointment.recurrence_pattern?.frequency || 'weekly',
+            recurringEndDate: selectedAppointment.recurrence_pattern?.end_date || ''
         })
         setIsViewModalOpen(false)
         setIsScheduleModalOpen(true)
@@ -474,40 +322,53 @@ export default function CalendarPage() {
     }
 
     // Confirm cancel appointment
-    const handleConfirmCancel = () => {
+    const handleConfirmCancel = async () => {
+        if (isSaving) return
         if (!selectedAppointment) return
-        setAppointments(prev => prev.map(apt =>
-            apt.id === selectedAppointment.id
-                ? { ...apt, status: 'cancelled' as const }
-                : apt
-        ))
-        setIsCancelDialogOpen(false)
-        setSelectedAppointment(null)
-        toast.success('Appointment cancelled')
+        setIsSaving(true)
+        try {
+            await appointmentsApi.updateStatus(selectedAppointment.id, 'cancelled')
+            toast.success('Appointment cancelled')
+            fetchAppointments()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to cancel appointment')
+        } finally {
+            setIsSaving(false)
+            setIsCancelDialogOpen(false)
+            setSelectedAppointment(null)
+        }
     }
 
     // Mark appointment as completed
-    const handleMarkComplete = () => {
+    const handleMarkComplete = async () => {
+        if (isSaving) return
         if (!selectedAppointment) return
-        setAppointments(prev => prev.map(apt =>
-            apt.id === selectedAppointment.id
-                ? { ...apt, status: 'completed' as const }
-                : apt
-        ))
-        setIsViewModalOpen(false)
-        setSelectedAppointment(null)
-        toast.success('Appointment marked as completed')
+        setIsSaving(true)
+        try {
+            await appointmentsApi.updateStatus(selectedAppointment.id, 'attended')
+            toast.success('Appointment marked as completed')
+            fetchAppointments()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to update appointment')
+        } finally {
+            setIsSaving(false)
+            setIsViewModalOpen(false)
+            setSelectedAppointment(null)
+        }
     }
-    const handleMarkNoShow = () => {
+
+    const handleMarkNoShow = async () => {
         if (!selectedAppointment) return
-        setAppointments(prev => prev.map(apt =>
-            apt.id === selectedAppointment.id
-                ? { ...apt, status: 'no_show' as const }
-                : apt
-        ))
-        setIsViewModalOpen(false)
-        setSelectedAppointment(null)
-        toast.success('Appointment marked as no-show')
+        try {
+            await appointmentsApi.updateStatus(selectedAppointment.id, 'no_show')
+            toast.success('Appointment marked as no-show')
+            fetchAppointments()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to update appointment')
+        } finally {
+            setIsViewModalOpen(false)
+            setSelectedAppointment(null)
+        }
     }
 
     // Handle CPT code change - auto-update units
@@ -515,86 +376,60 @@ export default function CalendarPage() {
         const cpt = cptCodes.find(c => c.code === code)
         setFormData(prev => ({
             ...prev,
-            cptCode: code,
+            serviceCode: code,
             units: cpt?.defaultUnits || prev.units
         }))
     }
 
     // Handle schedule submit
-    const handleScheduleSubmit = (e: React.FormEvent) => {
+    const handleScheduleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
+        if (isSaving) return
 
-        const client = clients.find(c => c.id === Number(formData.clientId))
-        const provider = providers.find(p => p.id === Number(formData.providerId))
-        const location = locations.find(l => l.id === Number(formData.locationId))
-
-        if (!client || !provider || !location) return
-
-        if (isEditMode && selectedAppointment) {
-            // Update existing appointment
-            setAppointments(prev => prev.map(apt =>
-                apt.id === selectedAppointment.id
-                    ? {
-                        ...apt,
-                        clientId: Number(formData.clientId),
-                        clientName: client.name,
-                        providerId: Number(formData.providerId),
-                        providerName: provider.name,
-                        locationId: Number(formData.locationId),
-                        locationName: location.name,
-                        type: formData.type as Appointment['type'],
-                        cptCode: formData.cptCode,
-                        units: formData.units,
-                        authorizationId: formData.authorizationId ? Number(formData.authorizationId) : undefined,
-                        start: `${formData.date}T${formData.startTime}:00`,
-                        end: `${formData.date}T${formData.endTime}:00`,
-                        title: `${client.name} - ${sessionTypeLabels[formData.type]}`,
-                        notes: formData.notes,
-                        isRecurring: formData.isRecurring,
-                        recurringPattern: formData.recurringPattern
-                    }
-                    : apt
-            ))
-        } else {
-            // Create new appointment
-            const newAppointment: Appointment = {
-                id: String(Date.now()),
-                title: `${client.name} - ${sessionTypeLabels[formData.type]}`,
-                start: `${formData.date}T${formData.startTime}:00`,
-                end: `${formData.date}T${formData.endTime}:00`,
-                clientId: Number(formData.clientId),
-                clientName: client.name,
-                providerId: Number(formData.providerId),
-                providerName: provider.name,
-                locationId: Number(formData.locationId),
-                locationName: location.name,
-                type: formData.type as Appointment['type'],
-                status: 'scheduled',
-                cptCode: formData.cptCode,
-                units: formData.units,
-                authorizationId: formData.authorizationId ? Number(formData.authorizationId) : undefined,
-                notes: formData.notes,
-                isRecurring: formData.isRecurring,
-                recurringPattern: formData.recurringPattern
-            }
-            setAppointments(prev => [...prev, newAppointment])
+        const payload: CreateAppointmentPayload = {
+            client_id: formData.clientId,
+            provider_id: formData.providerId,
+            start_time: `${formData.date}T${formData.startTime}:00`,
+            end_time: `${formData.date}T${formData.endTime}:00`,
+            service_code: formData.serviceCode,
+            units: formData.units,
+            notes: formData.notes || undefined,
+            is_recurring: formData.isRecurring,
+            recurrence_pattern: formData.isRecurring ? {
+                frequency: formData.recurringPattern,
+                end_date: formData.recurringEndDate || undefined,
+            } : undefined,
         }
 
-        setIsScheduleModalOpen(false)
-        setSelectedAppointment(null)
-        toast.success(isEditMode ? 'Appointment rescheduled' : 'Appointment scheduled')
+        setIsSaving(true)
+        try {
+            if (isEditMode && selectedAppointment) {
+                await appointmentsApi.update(selectedAppointment.id, payload)
+                toast.success('Appointment rescheduled')
+            } else {
+                await appointmentsApi.create(payload)
+                toast.success('Appointment scheduled')
+            }
+            setIsScheduleModalOpen(false)
+            setSelectedAppointment(null)
+            fetchAppointments()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to save appointment')
+        } finally {
+            setIsSaving(false)
+        }
     }
 
     // Handle start session (navigate to notes)
     const handleStartSession = () => {
         if (!selectedAppointment) return
-        window.location.href = `/notes?appointment=${selectedAppointment.id}`
+        navigate(`/notes?appointment=${selectedAppointment.id}`)
     }
 
     // Handle view notes
     const handleViewNotes = () => {
         if (!selectedAppointment) return
-        window.location.href = `/notes?appointment=${selectedAppointment.id}`
+        navigate(`/notes?appointment=${selectedAppointment.id}`)
     }
 
     if (isLoading) {
@@ -662,45 +497,16 @@ export default function CalendarPage() {
                         <FunnelSimple size={18} weight="regular" />
                         <select
                             value={providerFilter}
-                            onChange={(e) => setProviderFilter(Number(e.target.value))}
+                            onChange={(e) => setProviderFilter(e.target.value)}
                             className="filter-select"
                         >
-                            {providers.map(p => (
-                                <option key={p.id} value={p.id}>{p.name}</option>
+                            <option value="">All Providers</option>
+                            {providersList.map(p => (
+                                <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
                             ))}
                         </select>
                         <CaretDown size={14} weight="bold" className="filter-caret" />
                     </div>
-
-                    {/* Location Filter */}
-                    <div className="filter-group">
-                        <select
-                            value={locationFilter}
-                            onChange={(e) => setLocationFilter(Number(e.target.value))}
-                            className="filter-select"
-                        >
-                            {locations.map(l => (
-                                <option key={l.id} value={l.id}>{l.name}</option>
-                            ))}
-                        </select>
-                        <CaretDown size={14} weight="bold" className="filter-caret" />
-                    </div>
-
-                    {/* NPI Filter - Admin Only */}
-                    {isAdmin && (
-                        <div className="filter-group npi-filter">
-                            <select
-                                value={npiFilter}
-                                onChange={(e) => setNpiFilter(e.target.value)}
-                                className="filter-select"
-                            >
-                                {npiList.map(n => (
-                                    <option key={n.npi || 'all'} value={n.npi}>{n.name}</option>
-                                ))}
-                            </select>
-                            <CaretDown size={14} weight="bold" className="filter-caret" />
-                        </div>
-                    )}
                 </div>
             </div>
 
@@ -770,13 +576,13 @@ export default function CalendarPage() {
                             <label className="form-label">Client *</label>
                             <select
                                 value={formData.clientId}
-                                onChange={(e) => setFormData(prev => ({ ...prev, clientId: e.target.value, authorizationId: '' }))}
+                                onChange={(e) => setFormData(prev => ({ ...prev, clientId: e.target.value }))}
                                 className="form-input-basic"
                                 required
                             >
                                 <option value="">Select client</option>
-                                {clients.map(c => (
-                                    <option key={c.id} value={c.id}>{c.name}</option>
+                                {clientsList.map(c => (
+                                    <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
                                 ))}
                             </select>
                         </div>
@@ -790,41 +596,9 @@ export default function CalendarPage() {
                                 required
                             >
                                 <option value="">Select provider</option>
-                                {providers.filter(p => p.id !== 0).map(p => (
-                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                {providersList.map(p => (
+                                    <option key={p.id} value={p.id}>{p.first_name} {p.last_name}</option>
                                 ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="form-row-2">
-                        <div className="form-group">
-                            <label className="form-label">Location *</label>
-                            <select
-                                value={formData.locationId}
-                                onChange={(e) => setFormData(prev => ({ ...prev, locationId: e.target.value }))}
-                                className="form-input-basic"
-                                required
-                            >
-                                <option value="">Select location</option>
-                                {locations.filter(l => l.id !== 0).map(l => (
-                                    <option key={l.id} value={l.id}>{l.name}</option>
-                                ))}
-                            </select>
-                        </div>
-
-                        <div className="form-group">
-                            <label className="form-label">Session Type *</label>
-                            <select
-                                value={formData.type}
-                                onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}
-                                className="form-input-basic"
-                                required
-                            >
-                                <option value="aba_session">ABA Session</option>
-                                <option value="parent_training">Parent Training</option>
-                                <option value="assessment">Assessment</option>
-                                <option value="supervision">Supervision</option>
                             </select>
                         </div>
                     </div>
@@ -833,7 +607,7 @@ export default function CalendarPage() {
                         <div className="form-group">
                             <label className="form-label">CPT Code *</label>
                             <select
-                                value={formData.cptCode}
+                                value={formData.serviceCode}
                                 onChange={(e) => handleCptChange(e.target.value)}
                                 className="form-input-basic"
                                 required
@@ -858,23 +632,6 @@ export default function CalendarPage() {
                         </div>
 
                         <div className="form-group">
-                            <label className="form-label">Authorization</label>
-                            <select
-                                value={formData.authorizationId}
-                                onChange={(e) => setFormData(prev => ({ ...prev, authorizationId: e.target.value }))}
-                                className="form-input-basic"
-                                disabled={!formData.clientId}
-                            >
-                                <option value="">Select authorization</option>
-                                {clientAuthorizations.map(a => (
-                                    <option key={a.id} value={a.id}>{a.name}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="form-row-3">
-                        <div className="form-group">
                             <label className="form-label">Date *</label>
                             <input
                                 type="date"
@@ -884,6 +641,9 @@ export default function CalendarPage() {
                                 required
                             />
                         </div>
+                    </div>
+
+                    <div className="form-row-2">
                         <div className="form-group">
                             <label className="form-label">Start Time *</label>
                             <input
@@ -924,7 +684,7 @@ export default function CalendarPage() {
                                         <label className="form-label-sm">Repeat</label>
                                         <select
                                             value={formData.recurringPattern}
-                                            onChange={(e) => setFormData(prev => ({ ...prev, recurringPattern: e.target.value }))}
+                                            onChange={(e) => setFormData(prev => ({ ...prev, recurringPattern: e.target.value as typeof formData.recurringPattern }))}
                                             className="form-input-basic"
                                         >
                                             <option value="daily">Daily</option>
@@ -1017,38 +777,39 @@ export default function CalendarPage() {
 
                         <div className="detail-row">
                             <span className="detail-label">Client</span>
-                            <span className="detail-value">{selectedAppointment.clientName}</span>
+                            <span className="detail-value">{aptClientName(selectedAppointment)}</span>
                         </div>
 
                         <div className="detail-row">
                             <span className="detail-label">Provider</span>
-                            <span className="detail-value">{selectedAppointment.providerName}</span>
+                            <span className="detail-value">{aptProviderName(selectedAppointment)}</span>
                         </div>
 
-                        <div className="detail-row">
-                            <span className="detail-label">Location</span>
-                            <span className="detail-value">{selectedAppointment.locationName}</span>
-                        </div>
+                        {selectedAppointment.location && (
+                            <div className="detail-row">
+                                <span className="detail-label">Location</span>
+                                <span className="detail-value">{selectedAppointment.location.name}</span>
+                            </div>
+                        )}
 
-                        <div className="detail-row">
-                            <span className="detail-label">Type</span>
-                            <span className="detail-value">{sessionTypeLabels[selectedAppointment.type]}</span>
-                        </div>
+                        {selectedAppointment.service_code && (
+                            <div className="detail-row">
+                                <span className="detail-label">CPT Code</span>
+                                <span className="detail-value">{selectedAppointment.service_code}</span>
+                            </div>
+                        )}
 
-                        <div className="detail-row">
-                            <span className="detail-label">CPT Code</span>
-                            <span className="detail-value">{selectedAppointment.cptCode}</span>
-                        </div>
-
-                        <div className="detail-row">
-                            <span className="detail-label">Units</span>
-                            <span className="detail-value">{selectedAppointment.units}</span>
-                        </div>
+                        {selectedAppointment.units && (
+                            <div className="detail-row">
+                                <span className="detail-label">Units</span>
+                                <span className="detail-value">{selectedAppointment.units}</span>
+                            </div>
+                        )}
 
                         <div className="detail-row">
                             <span className="detail-label">Date</span>
                             <span className="detail-value">
-                                {new Date(selectedAppointment.start).toLocaleDateString('en-US', {
+                                {new Date(selectedAppointment.start_time).toLocaleDateString('en-US', {
                                     weekday: 'long',
                                     month: 'long',
                                     day: 'numeric',
@@ -1060,10 +821,10 @@ export default function CalendarPage() {
                         <div className="detail-row">
                             <span className="detail-label">Time</span>
                             <span className="detail-value">
-                                {new Date(selectedAppointment.start).toLocaleTimeString('en-US', {
+                                {new Date(selectedAppointment.start_time).toLocaleTimeString('en-US', {
                                     hour: 'numeric',
                                     minute: '2-digit'
-                                })} - {new Date(selectedAppointment.end).toLocaleTimeString('en-US', {
+                                })} - {new Date(selectedAppointment.end_time).toLocaleTimeString('en-US', {
                                     hour: 'numeric',
                                     minute: '2-digit'
                                 })}
@@ -1079,7 +840,7 @@ export default function CalendarPage() {
                                     <button className="btn-danger-outline" onClick={handleCancelClick}>Cancel</button>
                                 </>
                             )}
-                            {selectedAppointment.status === 'completed' && (
+                            {(selectedAppointment.status === 'attended') && (
                                 <button className="btn-primary" onClick={handleViewNotes}>View Notes</button>
                             )}
                             {selectedAppointment.status === 'no_show' && (
@@ -1106,7 +867,7 @@ export default function CalendarPage() {
                 onConfirm={handleConfirmCancel}
                 title="Cancel Appointment"
                 message={selectedAppointment
-                    ? `Are you sure you want to cancel the session with ${selectedAppointment.clientName}?`
+                    ? `Are you sure you want to cancel the session with ${aptClientName(selectedAppointment)}?`
                     : ''
                 }
                 confirmLabel="Cancel Appointment"

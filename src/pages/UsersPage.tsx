@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
-import { userSchema } from '../lib/validationSchemas'
 import { DashboardLayout } from '../components/layout'
 import { Modal, EmptyState, PageSkeleton } from '../components/ui'
+import { usersApi } from '../api'
+import type { User } from '../types'
 import {
     Users,
     MagnifyingGlass,
@@ -11,27 +12,6 @@ import {
     CheckCircle,
     XCircle
 } from '@phosphor-icons/react'
-
-interface User {
-    id: number
-    firstName: string
-    lastName: string
-    email: string
-    phone: string
-    role: 'admin' | 'clinician' | 'supervisor' | 'biller' | 'front_desk'
-    status: 'active' | 'inactive'
-    lastLogin: string | null
-    createdAt: string
-}
-
-const mockUsers: User[] = [
-    { id: 1, firstName: 'Amanda', lastName: 'Wilson', email: 'amanda.wilson@sirenahealthehr.com', phone: '(555) 123-4567', role: 'admin', status: 'active', lastLogin: '2026-02-09T14:30:00', createdAt: '2024-01-15' },
-    { id: 2, firstName: 'Jessica', lastName: 'Martinez', email: 'jessica.m@sirenahealthehr.com', phone: '(555) 234-5678', role: 'clinician', status: 'active', lastLogin: '2026-02-09T10:15:00', createdAt: '2024-02-01' },
-    { id: 3, firstName: 'Robert', lastName: 'Kim', email: 'r.kim@sirenahealthehr.com', phone: '(555) 345-6789', role: 'clinician', status: 'active', lastLogin: '2026-02-08T16:45:00', createdAt: '2024-02-15' },
-    { id: 4, firstName: 'Maria', lastName: 'Santos', email: 'maria.s@sirenahealthehr.com', phone: '(555) 456-7890', role: 'supervisor', status: 'active', lastLogin: '2026-02-09T09:00:00', createdAt: '2024-01-20' },
-    { id: 5, firstName: 'David', lastName: 'Chen', email: 'd.chen@sirenahealthehr.com', phone: '(555) 567-8901', role: 'biller', status: 'active', lastLogin: '2026-02-09T11:30:00', createdAt: '2024-03-01' },
-    { id: 6, firstName: 'Sarah', lastName: 'Thompson', email: 's.thompson@sirenahealthehr.com', phone: '(555) 678-9012', role: 'front_desk', status: 'inactive', lastLogin: '2026-01-15T14:00:00', createdAt: '2024-02-10' },
-]
 
 const roleLabels: Record<string, string> = {
     admin: 'Administrator',
@@ -50,19 +30,14 @@ const roleColors: Record<string, string> = {
 }
 
 export default function UsersPage() {
-    const [isLoading, setIsLoading] = useState(true)
-
-    useEffect(() => {
-        const timer = setTimeout(() => setIsLoading(false), 800)
-        return () => clearTimeout(timer)
-    }, [])
-
-    const [users, setUsers] = useState<User[]>(mockUsers)
+    const [users, setUsers] = useState<User[]>([])
     const [searchQuery, setSearchQuery] = useState('')
     const [roleFilter, setRoleFilter] = useState('all')
+    const [statusFilter, setStatusFilter] = useState('all')
     const [isAddModalOpen, setIsAddModalOpen] = useState(false)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
-    const [selectedUser, setSelectedUser] = useState<User | null>(null)
+    const [editingUser, setEditingUser] = useState<User | null>(null)
+    const [isLoading, setIsLoading] = useState(true)
 
     // Form state
     const [formData, setFormData] = useState({
@@ -70,30 +45,42 @@ export default function UsersPage() {
         lastName: '',
         email: '',
         phone: '',
-        role: 'clinician' as User['role']
+        role: 'clinician',
+        password: ''
     })
     const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+    const [isSaving, setIsSaving] = useState(false)
+
+    // Load users
+    useEffect(() => {
+        loadUsers()
+    }, [])
+
+    const loadUsers = async () => {
+        try {
+            setIsLoading(true)
+            const res = await usersApi.getAll({ page_size: 200 })
+            setUsers(res.results)
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to load users')
+        } finally {
+            setIsLoading(false)
+        }
+    }
 
     const handleFieldChange = (field: string, value: string) => {
         setFormData(prev => ({ ...prev, [field]: value }))
+        // Clear error on change
         if (formErrors[field]) {
             setFormErrors(prev => {
-                const next = { ...prev }
-                delete next[field]
-                return next
+                const n = { ...prev }
+                delete n[field]
+                return n
             })
         }
     }
 
-    const filteredUsers = users.filter(user => {
-        const fullName = `${user.firstName} ${user.lastName}`.toLowerCase()
-        const matchesSearch = fullName.includes(searchQuery.toLowerCase()) ||
-            user.email.toLowerCase().includes(searchQuery.toLowerCase())
-        const matchesRole = roleFilter === 'all' || user.role === roleFilter
-        return matchesSearch && matchesRole
-    })
-
-    const formatDate = (date: string | null) => {
+    const formatDate = (date: string | null | undefined) => {
         if (!date) return 'Never'
         return new Date(date).toLocaleDateString('en-US', {
             month: 'short',
@@ -104,71 +91,96 @@ export default function UsersPage() {
         })
     }
 
-    const handleAddUser = () => {
-        const result = userSchema.safeParse(formData)
-        if (!result.success) {
-            const fieldErrors: Record<string, string> = {}
-            result.error.issues.forEach((err) => {
-                const field = err.path[0] as string
-                if (!fieldErrors[field]) fieldErrors[field] = err.message
-            })
-            setFormErrors(fieldErrors)
-            return
-        }
-
-        const newUser: User = {
-            id: Math.max(...users.map(u => u.id)) + 1,
-            ...formData,
-            status: 'active',
-            lastLogin: null,
-            createdAt: new Date().toISOString()
-        }
-        setUsers([...users, newUser])
-        setIsAddModalOpen(false)
-        resetForm()
-        toast.success(`${formData.firstName} ${formData.lastName} added`)
+    const validateForm = () => {
+        const errors: Record<string, string> = {}
+        if (!formData.firstName.trim()) errors.firstName = 'First name is required'
+        if (!formData.lastName.trim()) errors.lastName = 'Last name is required'
+        if (!formData.email.trim()) errors.email = 'Email is required'
+        if (!isEditModalOpen && !formData.password.trim()) errors.password = 'Password is required'
+        if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) errors.email = 'Invalid email format'
+        setFormErrors(errors)
+        return Object.keys(errors).length === 0
     }
 
-    const handleEditUser = () => {
-        if (!selectedUser) return
+    const handleAddUser = async () => {
+        if (isSaving) return
+        if (!validateForm()) return
 
-        const result = userSchema.safeParse(formData)
-        if (!result.success) {
-            const fieldErrors: Record<string, string> = {}
-            result.error.issues.forEach((err) => {
-                const field = err.path[0] as string
-                if (!fieldErrors[field]) fieldErrors[field] = err.message
+        setIsSaving(true)
+        try {
+            await usersApi.create({
+                first_name: formData.firstName,
+                last_name: formData.lastName,
+                email: formData.email,
+                role: formData.role,
+                password: formData.password,
+                organization_id: '', // Backend may set this from auth context
+                phone: formData.phone || undefined,
             })
-            setFormErrors(fieldErrors)
-            return
+            toast.success(`${formData.firstName} ${formData.lastName} has been added`)
+            setIsAddModalOpen(false)
+            resetForm()
+            loadUsers()
+        } catch (err: any) {
+            const errData = err?.response?.data
+            if (errData?.email) {
+                toast.error(`Email: ${errData.email}`)
+            } else {
+                toast.error(errData?.detail || 'Failed to add user')
+            }
+        } finally {
+            setIsSaving(false)
         }
-
-        setUsers(prev => prev.map(u =>
-            u.id === selectedUser.id ? { ...u, ...formData } : u
-        ))
-        setIsEditModalOpen(false)
-        setSelectedUser(null)
-        resetForm()
-        toast.success('User updated successfully')
     }
 
-    const handleDeactivate = (user: User) => {
-        const newStatus = user.status === 'active' ? 'inactive' : 'active'
-        setUsers(prev => prev.map(u =>
-            u.id === user.id ? { ...u, status: newStatus } : u
-        ))
-        toast.success(`${user.firstName} ${user.lastName} ${newStatus === 'active' ? 'activated' : 'deactivated'}`)
+    const handleEditUser = async () => {
+        if (isSaving) return
+        if (!validateForm() || !editingUser) return
+
+        setIsSaving(true)
+        try {
+            await usersApi.update(editingUser.id, {
+                first_name: formData.firstName,
+                last_name: formData.lastName,
+                role: formData.role,
+            })
+            toast.success(`${formData.firstName} ${formData.lastName} has been updated`)
+            setIsEditModalOpen(false)
+            setEditingUser(null)
+            resetForm()
+            loadUsers()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to update user')
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    const handleDeactivate = async (user: User) => {
+        if (isSaving) return
+        setIsSaving(true)
+        try {
+            await usersApi.update(user.id, { is_active: !user.is_active })
+            toast.success(`${user.first_name} ${user.last_name} ${user.is_active ? 'deactivated' : 'activated'}`)
+            loadUsers()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to update status')
+        } finally {
+            setIsSaving(false)
+        }
     }
 
     const openEditModal = (user: User) => {
-        setSelectedUser(user)
+        setEditingUser(user)
         setFormData({
-            firstName: user.firstName,
-            lastName: user.lastName,
+            firstName: user.first_name,
+            lastName: user.last_name,
             email: user.email,
-            phone: user.phone,
-            role: user.role
+            phone: user.phone || '',
+            role: user.role,
+            password: ''
         })
+        setFormErrors({})
         setIsEditModalOpen(true)
     }
 
@@ -178,10 +190,22 @@ export default function UsersPage() {
             lastName: '',
             email: '',
             phone: '',
-            role: 'clinician'
+            role: 'clinician',
+            password: ''
         })
         setFormErrors({})
     }
+
+    const filteredUsers = users.filter(user => {
+        const matchesSearch = `${user.first_name} ${user.last_name} ${user.email}`
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase())
+        const matchesRole = roleFilter === 'all' || user.role === roleFilter
+        const matchesStatus = statusFilter === 'all' ||
+            (statusFilter === 'active' && user.is_active) ||
+            (statusFilter === 'inactive' && !user.is_active)
+        return matchesSearch && matchesRole && matchesStatus
+    })
 
     if (isLoading) {
         return (
@@ -194,25 +218,27 @@ export default function UsersPage() {
     return (
         <DashboardLayout>
             <div className="page-header">
-                <div className="page-header-content">
+                <div className="page-header-left">
                     <h1 className="page-title">
-                        <Users size={28} weight="duotone" className="page-title-icon" />
+                        <Users size={28} weight="duotone" />
                         User Management
                     </h1>
-                    <p className="page-subtitle">{users.filter(u => u.status === 'active').length} active users</p>
+                    <p className="page-subtitle">
+                        {users.length} total users · {users.filter(u => u.is_active).length} active
+                    </p>
                 </div>
-                <button className="btn-primary" onClick={() => setIsAddModalOpen(true)}>
-                    <UserCirclePlus size={18} weight="bold" />
+                <button className="btn-primary" onClick={() => { resetForm(); setIsAddModalOpen(true) }}>
+                    <UserCirclePlus size={20} weight="bold" />
                     Add User
                 </button>
             </div>
 
-            {/* Filters */}
-            <div className="filters-bar">
-                <div className="search-input">
+            <div className="filter-bar">
+                <div className="search-input-wrapper">
                     <MagnifyingGlass size={18} className="search-icon" />
                     <input
                         type="text"
+                        className="search-input"
                         placeholder="Search users..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -224,153 +250,178 @@ export default function UsersPage() {
                     onChange={(e) => setRoleFilter(e.target.value)}
                 >
                     <option value="all">All Roles</option>
-                    <option value="admin">Administrators</option>
-                    <option value="clinician">Clinicians</option>
-                    <option value="supervisor">Supervisors</option>
-                    <option value="biller">Billers</option>
+                    <option value="admin">Administrator</option>
+                    <option value="clinician">Clinician</option>
+                    <option value="supervisor">Supervisor</option>
+                    <option value="biller">Biller</option>
                     <option value="front_desk">Front Desk</option>
+                </select>
+                <select
+                    className="filter-select"
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
                 </select>
             </div>
 
-            {/* Users Table */}
             <div className="card">
                 <div className="card-body p-0">
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th>User</th>
-                                <th>Email</th>
-                                <th>Role</th>
-                                <th>Status</th>
-                                <th>Last Login</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredUsers.map(user => (
-                                <tr key={user.id} className={user.status === 'inactive' ? 'row-inactive' : ''}>
-                                    <td>
-                                        <div className="user-cell">
-                                            <div className="user-avatar">
-                                                {user.firstName[0]}{user.lastName[0]}
-                                            </div>
-                                            <div>
-                                                <p className="user-name">{user.firstName} {user.lastName}</p>
-                                                <p className="user-phone">{user.phone}</p>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td>{user.email}</td>
-                                    <td>
-                                        <span className={`badge ${roleColors[user.role]}`}>
-                                            {roleLabels[user.role]}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        <span className={`badge ${user.status === 'active' ? 'badge-active' : 'badge-inactive'}`}>
-                                            {user.status === 'active' ? 'Active' : 'Inactive'}
-                                        </span>
-                                    </td>
-                                    <td className="text-muted">{formatDate(user.lastLogin)}</td>
-                                    <td>
-                                        <div className="action-buttons">
-                                            <button className="btn-icon" onClick={() => openEditModal(user)} title="Edit">
-                                                <PencilSimple size={18} />
-                                            </button>
-                                            <button
-                                                className="btn-icon"
-                                                onClick={() => handleDeactivate(user)}
-                                                title={user.status === 'active' ? 'Deactivate' : 'Activate'}
-                                            >
-                                                {user.status === 'active' ? <XCircle size={18} /> : <CheckCircle size={18} />}
-                                            </button>
-                                        </div>
-                                    </td>
+                    {filteredUsers.length > 0 ? (
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th>User</th>
+                                    <th>Email</th>
+                                    <th>Role</th>
+                                    <th>Status</th>
+                                    <th>Last Login</th>
+                                    <th>Actions</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {filteredUsers.map(user => (
+                                    <tr key={user.id}>
+                                        <td>
+                                            <div className="user-cell">
+                                                <div className="user-avatar-sm">
+                                                    {user.first_name[0]}{user.last_name[0]}
+                                                </div>
+                                                <span className="user-name">{user.first_name} {user.last_name}</span>
+                                            </div>
+                                        </td>
+                                        <td>{user.email}</td>
+                                        <td>
+                                            <span className={`badge ${roleColors[user.role] || 'badge-default'}`}>
+                                                {roleLabels[user.role] || user.role}
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <span className={`badge ${user.is_active ? 'badge-active' : 'badge-inactive'}`}>
+                                                {user.is_active ? (
+                                                    <><CheckCircle size={14} weight="fill" /> Active</>
+                                                ) : (
+                                                    <><XCircle size={14} weight="fill" /> Inactive</>
+                                                )}
+                                            </span>
+                                        </td>
+                                        <td className="text-muted">{formatDate(user.last_login)}</td>
+                                        <td>
+                                            <div className="action-buttons">
+                                                <button
+                                                    className="btn-icon-sm"
+                                                    title="Edit"
+                                                    onClick={() => openEditModal(user)}
+                                                >
+                                                    <PencilSimple size={16} />
+                                                </button>
+                                                <button
+                                                    className={`btn-icon-sm ${user.is_active ? 'danger' : 'success'}`}
+                                                    title={user.is_active ? 'Deactivate' : 'Activate'}
+                                                    onClick={() => handleDeactivate(user)}
+                                                >
+                                                    {user.is_active ? <XCircle size={16} /> : <CheckCircle size={16} />}
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    ) : (
+                        <EmptyState
+                            variant="no-data"
+                            title="No users found"
+                            description="Try adjusting your search or filters."
+                        />
+                    )}
                 </div>
-                {filteredUsers.length === 0 && (
-                    <EmptyState
-                        variant={searchQuery || roleFilter !== 'all' ? 'no-results' : 'no-data'}
-                        title={searchQuery || roleFilter !== 'all' ? 'No users found' : 'No users yet'}
-                        description={searchQuery || roleFilter !== 'all' ? 'Try adjusting your search or filter criteria' : 'Add your first user to get started'}
-                        actionLabel={!searchQuery && roleFilter === 'all' ? 'Add User' : undefined}
-                        onAction={!searchQuery && roleFilter === 'all' ? () => setIsAddModalOpen(true) : undefined}
-                    />
-                )}
             </div>
 
             {/* Add User Modal */}
             <Modal
                 isOpen={isAddModalOpen}
-                onClose={() => { setIsAddModalOpen(false); resetForm(); }}
+                onClose={() => { setIsAddModalOpen(false); resetForm() }}
                 title="Add New User"
+                size="md"
             >
-                <div className="modal-form">
+                <div className="user-form">
                     <div className="form-row">
                         <div className="form-group">
-                            <label>First Name</label>
+                            <label className="form-label">First Name *</label>
                             <input
                                 type="text"
+                                className={`form-input ${formErrors.firstName ? 'error' : ''}`}
+                                placeholder="First name"
                                 value={formData.firstName}
                                 onChange={(e) => handleFieldChange('firstName', e.target.value)}
-                                className={formErrors.firstName ? 'input-error' : ''}
-                                placeholder="Enter first name"
                             />
-                            {formErrors.firstName && <span className="field-error">{formErrors.firstName}</span>}
+                            {formErrors.firstName && <p className="form-error">{formErrors.firstName}</p>}
                         </div>
                         <div className="form-group">
-                            <label>Last Name</label>
+                            <label className="form-label">Last Name *</label>
                             <input
                                 type="text"
+                                className={`form-input ${formErrors.lastName ? 'error' : ''}`}
+                                placeholder="Last name"
                                 value={formData.lastName}
                                 onChange={(e) => handleFieldChange('lastName', e.target.value)}
-                                className={formErrors.lastName ? 'input-error' : ''}
-                                placeholder="Enter last name"
                             />
-                            {formErrors.lastName && <span className="field-error">{formErrors.lastName}</span>}
+                            {formErrors.lastName && <p className="form-error">{formErrors.lastName}</p>}
                         </div>
                     </div>
                     <div className="form-group">
-                        <label>Email</label>
+                        <label className="form-label">Email *</label>
                         <input
                             type="email"
+                            className={`form-input ${formErrors.email ? 'error' : ''}`}
+                            placeholder="user@sirenahealthehr.com"
                             value={formData.email}
                             onChange={(e) => handleFieldChange('email', e.target.value)}
-                            className={formErrors.email ? 'input-error' : ''}
-                            placeholder="user@example.com"
                         />
-                        {formErrors.email && <span className="field-error">{formErrors.email}</span>}
+                        {formErrors.email && <p className="form-error">{formErrors.email}</p>}
                     </div>
                     <div className="form-group">
-                        <label>Phone</label>
+                        <label className="form-label">Phone</label>
                         <input
                             type="tel"
+                            className="form-input"
+                            placeholder="(555) 123-4567"
                             value={formData.phone}
                             onChange={(e) => handleFieldChange('phone', e.target.value)}
-                            placeholder="(555) 123-4567"
                         />
                     </div>
                     <div className="form-group">
-                        <label>Role</label>
+                        <label className="form-label">Role *</label>
                         <select
+                            className="form-select"
                             value={formData.role}
                             onChange={(e) => handleFieldChange('role', e.target.value)}
                         >
                             <option value="clinician">Clinician</option>
                             <option value="supervisor">Supervisor</option>
+                            <option value="admin">Administrator</option>
                             <option value="biller">Biller</option>
                             <option value="front_desk">Front Desk</option>
-                            <option value="admin">Administrator</option>
                         </select>
                     </div>
+                    <div className="form-group">
+                        <label className="form-label">Password *</label>
+                        <input
+                            type="password"
+                            className={`form-input ${formErrors.password ? 'error' : ''}`}
+                            placeholder="Temporary password"
+                            value={formData.password}
+                            onChange={(e) => handleFieldChange('password', e.target.value)}
+                        />
+                        {formErrors.password && <p className="form-error">{formErrors.password}</p>}
+                    </div>
                     <div className="form-actions">
-                        <button className="btn-secondary" onClick={() => { setIsAddModalOpen(false); resetForm(); }}>
-                            Cancel
-                        </button>
+                        <button className="btn-secondary" onClick={() => { setIsAddModalOpen(false); resetForm() }}>Cancel</button>
                         <button className="btn-primary" onClick={handleAddUser}>
+                            <UserCirclePlus size={18} />
                             Add User
                         </button>
                     </div>
@@ -380,67 +431,59 @@ export default function UsersPage() {
             {/* Edit User Modal */}
             <Modal
                 isOpen={isEditModalOpen}
-                onClose={() => { setIsEditModalOpen(false); setSelectedUser(null); resetForm(); }}
+                onClose={() => { setIsEditModalOpen(false); setEditingUser(null); resetForm() }}
                 title="Edit User"
+                size="md"
             >
-                <div className="modal-form">
+                <div className="user-form">
                     <div className="form-row">
                         <div className="form-group">
-                            <label>First Name</label>
+                            <label className="form-label">First Name *</label>
                             <input
                                 type="text"
+                                className={`form-input ${formErrors.firstName ? 'error' : ''}`}
                                 value={formData.firstName}
                                 onChange={(e) => handleFieldChange('firstName', e.target.value)}
-                                className={formErrors.firstName ? 'input-error' : ''}
                             />
-                            {formErrors.firstName && <span className="field-error">{formErrors.firstName}</span>}
+                            {formErrors.firstName && <p className="form-error">{formErrors.firstName}</p>}
                         </div>
                         <div className="form-group">
-                            <label>Last Name</label>
+                            <label className="form-label">Last Name *</label>
                             <input
                                 type="text"
+                                className={`form-input ${formErrors.lastName ? 'error' : ''}`}
                                 value={formData.lastName}
                                 onChange={(e) => handleFieldChange('lastName', e.target.value)}
-                                className={formErrors.lastName ? 'input-error' : ''}
                             />
-                            {formErrors.lastName && <span className="field-error">{formErrors.lastName}</span>}
+                            {formErrors.lastName && <p className="form-error">{formErrors.lastName}</p>}
                         </div>
                     </div>
                     <div className="form-group">
-                        <label>Email</label>
+                        <label className="form-label">Email</label>
                         <input
                             type="email"
+                            className="form-input"
                             value={formData.email}
-                            onChange={(e) => handleFieldChange('email', e.target.value)}
-                            className={formErrors.email ? 'input-error' : ''}
+                            disabled
                         />
-                        {formErrors.email && <span className="field-error">{formErrors.email}</span>}
+                        <p className="form-hint">Email cannot be changed</p>
                     </div>
                     <div className="form-group">
-                        <label>Phone</label>
-                        <input
-                            type="tel"
-                            value={formData.phone}
-                            onChange={(e) => handleFieldChange('phone', e.target.value)}
-                        />
-                    </div>
-                    <div className="form-group">
-                        <label>Role</label>
+                        <label className="form-label">Role *</label>
                         <select
+                            className="form-select"
                             value={formData.role}
                             onChange={(e) => handleFieldChange('role', e.target.value)}
                         >
                             <option value="clinician">Clinician</option>
                             <option value="supervisor">Supervisor</option>
+                            <option value="admin">Administrator</option>
                             <option value="biller">Biller</option>
                             <option value="front_desk">Front Desk</option>
-                            <option value="admin">Administrator</option>
                         </select>
                     </div>
                     <div className="form-actions">
-                        <button className="btn-secondary" onClick={() => { setIsEditModalOpen(false); setSelectedUser(null); resetForm(); }}>
-                            Cancel
-                        </button>
+                        <button className="btn-secondary" onClick={() => { setIsEditModalOpen(false); setEditingUser(null); resetForm() }}>Cancel</button>
                         <button className="btn-primary" onClick={handleEditUser}>
                             Save Changes
                         </button>

@@ -1,8 +1,10 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { ActionMenu, AddClientModal, EditClientModal, ConfirmDialog, ImportClientsModal, EmptyState, TableSkeleton } from '../components/ui'
+import { clientsApi } from '../api'
+import type { Client } from '../types'
 import {
     MagnifyingGlass,
     Plus,
@@ -18,134 +20,6 @@ import {
     UploadSimple
 } from '@phosphor-icons/react'
 
-// Client type for the list
-interface Client {
-    id: number
-    firstName: string
-    lastName: string
-    dateOfBirth: string
-    phone: string
-    email: string
-    status: 'active' | 'inactive' | 'pending'
-    insurance: string
-    provider: string
-    lastVisit: string | null
-    // Extended fields for edit
-    gender?: string
-    address?: string
-    city?: string
-    state?: string
-    zipCode?: string
-    memberId?: string
-    groupNumber?: string
-}
-
-// Form data type for editing clients
-interface ClientFormData {
-    id?: number
-    firstName: string
-    lastName: string
-    dateOfBirth: string
-    gender: string
-    phone: string
-    email: string
-    address: string
-    city: string
-    state: string
-    zipCode: string
-    insuranceName: string
-    memberId: string
-    groupNumber: string
-}
-
-// Mock client data
-const initialClients: Client[] = [
-    {
-        id: 1,
-        firstName: 'Sarah',
-        lastName: 'Johnson',
-        dateOfBirth: '1995-03-15',
-        gender: 'female',
-        phone: '(555) 123-4567',
-        email: 'sarah.j@email.com',
-        status: 'active',
-        insurance: 'Blue Cross',
-        provider: 'Dr. Smith',
-        lastVisit: '2026-02-05',
-        address: '123 Main St',
-        city: 'Los Angeles',
-        state: 'CA',
-        zipCode: '90001',
-        memberId: 'BCB123456',
-        groupNumber: 'GRP001'
-    },
-    {
-        id: 2,
-        firstName: 'Michael',
-        lastName: 'Chen',
-        dateOfBirth: '1988-07-22',
-        gender: 'male',
-        phone: '(555) 234-5678',
-        email: 'mchen@email.com',
-        status: 'active',
-        insurance: 'Aetna',
-        provider: 'Dr. Smith',
-        lastVisit: '2026-02-07'
-    },
-    {
-        id: 3,
-        firstName: 'Emily',
-        lastName: 'Davis',
-        dateOfBirth: '2012-11-08',
-        gender: 'female',
-        phone: '(555) 345-6789',
-        email: 'edavis.parent@email.com',
-        status: 'active',
-        insurance: 'United Health',
-        provider: 'Dr. Williams',
-        lastVisit: '2026-02-01'
-    },
-    {
-        id: 4,
-        firstName: 'James',
-        lastName: 'Wilson',
-        dateOfBirth: '2001-05-30',
-        gender: 'male',
-        phone: '(555) 456-7890',
-        email: 'jwilson@email.com',
-        status: 'inactive',
-        insurance: 'Cigna',
-        provider: 'Dr. Smith',
-        lastVisit: '2026-01-15'
-    },
-    {
-        id: 5,
-        firstName: 'Lisa',
-        lastName: 'Thompson',
-        dateOfBirth: '1979-09-12',
-        gender: 'female',
-        phone: '(555) 567-8901',
-        email: 'lthompson@email.com',
-        status: 'active',
-        insurance: 'Blue Cross',
-        provider: 'Dr. Martinez',
-        lastVisit: '2026-02-08'
-    },
-    {
-        id: 6,
-        firstName: 'David',
-        lastName: 'Brown',
-        dateOfBirth: '2015-01-25',
-        gender: 'male',
-        phone: '(555) 678-9012',
-        email: 'dbrown.parent@email.com',
-        status: 'pending',
-        insurance: 'Medicaid',
-        provider: 'Dr. Williams',
-        lastVisit: null
-    },
-]
-
 // Calculate age from DOB
 const calculateAge = (dob: string) => {
     const today = new Date()
@@ -159,7 +33,7 @@ const calculateAge = (dob: string) => {
 }
 
 // Format date
-const formatDate = (date: string | null) => {
+const formatDate = (date: string | null | undefined) => {
     if (!date) return '—'
     return new Date(date).toLocaleDateString('en-US', {
         month: 'short',
@@ -169,11 +43,14 @@ const formatDate = (date: string | null) => {
 }
 
 // Sort types
-type SortField = 'name' | 'dob' | 'insurance' | 'provider' | 'lastVisit' | 'status'
+type SortField = 'name' | 'dob' | 'insurance' | 'lastVisit' | 'status'
 type SortDirection = 'asc' | 'desc'
 
 export default function ClientsPage() {
-    const [clients, setClients] = useState<Client[]>(initialClients)
+    const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
+    const [clients, setClients] = useState<Client[]>([])
+    const [totalCount, setTotalCount] = useState(0)
     const [searchQuery, setSearchQuery] = useState('')
     const [statusFilter, setStatusFilter] = useState('all')
     const [sortField, setSortField] = useState<SortField>('name')
@@ -186,13 +63,38 @@ export default function ClientsPage() {
     const [isImportModalOpen, setIsImportModalOpen] = useState(false)
     const [selectedClient, setSelectedClient] = useState<Client | null>(null)
     const [isDeleting, setIsDeleting] = useState(false)
+    const [isSaving, setIsSaving] = useState(false)
     const [showAddMenu, setShowAddMenu] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
 
+    // Open add modal if URL has ?action=add
     useEffect(() => {
-        const timer = setTimeout(() => setIsLoading(false), 800)
-        return () => clearTimeout(timer)
-    }, [])
+        if (searchParams.get('action') === 'add') {
+            setIsAddModalOpen(true)
+        }
+    }, [searchParams])
+
+    // Fetch clients from backend
+    const fetchClients = useCallback(async () => {
+        setIsLoading(true)
+        try {
+            const params: Record<string, string | boolean | number> = {}
+            if (searchQuery) params.search = searchQuery
+            if (statusFilter === 'active') params.status = 'active'
+            else if (statusFilter === 'inactive') params.status = 'inactive'
+            const response = await clientsApi.getAll(params)
+            setClients(response.results)
+            setTotalCount(response.count)
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to load clients')
+        } finally {
+            setIsLoading(false)
+        }
+    }, [searchQuery, statusFilter])
+
+    useEffect(() => {
+        fetchClients()
+    }, [fetchClients])
 
     // Handle sort
     const handleSort = (field: SortField) => {
@@ -204,76 +106,54 @@ export default function ClientsPage() {
         }
     }
 
-    // Filter and sort clients
-    const filteredClients = useMemo(() => {
-        // First filter
-        const filtered = clients.filter(client => {
-            const fullName = `${client.firstName} ${client.lastName}`.toLowerCase()
-            const query = searchQuery.toLowerCase()
-
-            // Search by name, email, phone, DOB, or ID
-            const matchesSearch =
-                fullName.includes(query) ||
-                client.email.toLowerCase().includes(query) ||
-                client.phone.includes(searchQuery) ||
-                client.dateOfBirth.includes(searchQuery) ||
-                String(client.id).includes(searchQuery)
-
-            const matchesStatus = statusFilter === 'all' || client.status === statusFilter
-
-            return matchesSearch && matchesStatus
-        })
-
-        // Then sort
-        return filtered.sort((a, b) => {
-            let comparison = 0
+    // Sort clients client-side (API does search/filter)
+    const sortedClients = useMemo(() => {
+        const sorted = [...clients]
+        sorted.sort((a, b) => {
+            let cmp = 0
             switch (sortField) {
                 case 'name':
-                    comparison = `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`)
+                    cmp = `${a.last_name} ${a.first_name}`.localeCompare(`${b.last_name} ${b.first_name}`)
                     break
                 case 'dob':
-                    comparison = new Date(a.dateOfBirth).getTime() - new Date(b.dateOfBirth).getTime()
+                    cmp = (a.date_of_birth || '').localeCompare(b.date_of_birth || '')
                     break
                 case 'insurance':
-                    comparison = a.insurance.localeCompare(b.insurance)
-                    break
-                case 'provider':
-                    comparison = a.provider.localeCompare(b.provider)
+                    cmp = (a.insurance_primary_name || '').localeCompare(b.insurance_primary_name || '')
                     break
                 case 'lastVisit':
-                    const dateA = a.lastVisit ? new Date(a.lastVisit).getTime() : 0
-                    const dateB = b.lastVisit ? new Date(b.lastVisit).getTime() : 0
-                    comparison = dateA - dateB
+                    cmp = (a.next_appointment || '').localeCompare(b.next_appointment || '')
                     break
                 case 'status':
-                    comparison = a.status.localeCompare(b.status)
+                    cmp = (a.is_active ? 'active' : 'inactive').localeCompare(b.is_active ? 'active' : 'inactive')
                     break
             }
-            return sortDirection === 'asc' ? comparison : -comparison
+            return sortDirection === 'asc' ? cmp : -cmp
         })
-    }, [clients, searchQuery, statusFilter, sortField, sortDirection])
+        return sorted
+    }, [clients, sortField, sortDirection])
 
-    // Convert Client to ClientFormData for edit modal
-    const clientToFormData = (client: Client): ClientFormData => ({
+    // Convert Client type to form data for edit modal
+    const clientToFormData = (client: Client) => ({
         id: client.id,
-        firstName: client.firstName,
-        lastName: client.lastName,
-        dateOfBirth: client.dateOfBirth,
+        firstName: client.first_name,
+        lastName: client.last_name,
+        dateOfBirth: client.date_of_birth,
         gender: client.gender || '',
-        phone: client.phone,
-        email: client.email,
+        phone: client.phone || '',
+        email: client.email || '',
         address: client.address || '',
         city: client.city || '',
         state: client.state || '',
-        zipCode: client.zipCode || '',
-        insuranceName: client.insurance,
-        memberId: client.memberId || '',
-        groupNumber: client.groupNumber || ''
+        zipCode: client.zip_code || '',
+        insuranceName: client.insurance_primary_name || '',
+        memberId: client.insurance_primary_id || '',
+        groupNumber: client.insurance_primary_group || ''
     })
 
     // Action handlers
-    const handleViewClient = (clientId: number) => {
-        window.location.href = `/clients/${clientId}`
+    const handleViewClient = (clientId: string) => {
+        navigate(`/clients/${clientId}`)
     }
 
     const handleEditClient = (client: Client) => {
@@ -281,9 +161,8 @@ export default function ClientsPage() {
         setIsEditModalOpen(true)
     }
 
-    const handleScheduleSession = (clientId: number) => {
-        // Navigate to calendar with client preselected
-        window.location.href = `/calendar?client=${clientId}`
+    const handleScheduleSession = (clientId: string) => {
+        navigate(`/calendar?client=${clientId}`)
     }
 
     const handleDeleteClick = (client: Client) => {
@@ -293,72 +172,78 @@ export default function ClientsPage() {
 
     const handleConfirmDelete = async () => {
         if (!selectedClient) return
-
         setIsDeleting(true)
-
-        // TODO: Replace with actual API call
-        await new Promise(resolve => setTimeout(resolve, 800))
-
-        // Remove from list
-        setClients(prev => prev.filter(c => c.id !== selectedClient.id))
-
-        setIsDeleting(false)
-        setIsDeleteDialogOpen(false)
-        setSelectedClient(null)
-        toast.success('Client deleted successfully')
-    }
-
-    const handleAddClient = (formData: any) => {
-        // Create new client with next ID
-        const newClient: Client = {
-            id: Math.max(...clients.map(c => c.id)) + 1,
-            firstName: formData.firstName,
-            lastName: formData.lastName,
-            dateOfBirth: formData.dateOfBirth,
-            gender: formData.gender,
-            phone: formData.phone,
-            email: formData.email,
-            status: 'active',
-            insurance: formData.insuranceName || 'None',
-            provider: 'Unassigned',
-            lastVisit: null,
-            address: formData.address,
-            city: formData.city,
-            state: formData.state,
-            zipCode: formData.zipCode,
-            memberId: formData.memberId,
-            groupNumber: formData.groupNumber
+        try {
+            await clientsApi.delete(selectedClient.id)
+            setClients(prev => prev.filter(c => c.id !== selectedClient.id))
+            setTotalCount(prev => prev - 1)
+            toast.success('Client deleted successfully')
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to delete client')
+        } finally {
+            setIsDeleting(false)
+            setIsDeleteDialogOpen(false)
+            setSelectedClient(null)
         }
-
-        setClients(prev => [newClient, ...prev])
-        toast.success(`${formData.firstName} ${formData.lastName} added successfully`)
     }
 
-    const handleUpdateClient = (formData: ClientFormData) => {
-        setClients(prev => prev.map(client => {
-            if (client.id === formData.id) {
-                return {
-                    ...client,
-                    firstName: formData.firstName,
-                    lastName: formData.lastName,
-                    dateOfBirth: formData.dateOfBirth,
-                    gender: formData.gender,
-                    phone: formData.phone,
-                    email: formData.email,
-                    insurance: formData.insuranceName,
-                    address: formData.address,
-                    city: formData.city,
-                    state: formData.state,
-                    zipCode: formData.zipCode,
-                    memberId: formData.memberId,
-                    groupNumber: formData.groupNumber
-                }
-            }
-            return client
-        }))
-        setIsEditModalOpen(false)
-        setSelectedClient(null)
-        toast.success('Client updated successfully')
+    const handleAddClient = async (formData: any) => {
+        if (isSaving) return
+        setIsSaving(true)
+        try {
+            await clientsApi.create({
+                first_name: formData.firstName,
+                last_name: formData.lastName,
+                date_of_birth: formData.dateOfBirth,
+                gender: formData.gender,
+                phone: formData.phone,
+                email: formData.email,
+                address: formData.address,
+                city: formData.city,
+                state: formData.state,
+                zip_code: formData.zipCode,
+                insurance_primary_name: formData.insuranceName,
+                insurance_primary_id: formData.memberId,
+                insurance_primary_group: formData.groupNumber,
+            })
+            toast.success(`${formData.firstName} ${formData.lastName} added successfully`)
+            setIsAddModalOpen(false)
+            fetchClients() // Refresh list
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to add client')
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
+    const handleUpdateClient = async (formData: any) => {
+        if (isSaving) return
+        setIsSaving(true)
+        try {
+            await clientsApi.update(formData.id, {
+                first_name: formData.firstName,
+                last_name: formData.lastName,
+                date_of_birth: formData.dateOfBirth,
+                gender: formData.gender,
+                phone: formData.phone,
+                email: formData.email,
+                address: formData.address,
+                city: formData.city,
+                state: formData.state,
+                zip_code: formData.zipCode,
+                insurance_primary_name: formData.insuranceName,
+                insurance_primary_id: formData.memberId,
+                insurance_primary_group: formData.groupNumber,
+            })
+            toast.success('Client updated successfully')
+            setIsEditModalOpen(false)
+            setSelectedClient(null)
+            fetchClients() // Refresh list
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to update client')
+        } finally {
+            setIsSaving(false)
+        }
     }
 
     // Generate action menu items for each client
@@ -392,7 +277,7 @@ export default function ClientsPage() {
             <div className="page-header">
                 <div>
                     <h1 className="page-title">Clients</h1>
-                    <p className="page-subtitle">{clients.length} total clients in your practice</p>
+                    <p className="page-subtitle">{totalCount} total clients in your practice</p>
                 </div>
                 <div className="header-actions">
                     <div className="dropdown-container">
@@ -441,7 +326,6 @@ export default function ClientsPage() {
                         <option value="all">All Status</option>
                         <option value="active">Active</option>
                         <option value="inactive">Inactive</option>
-                        <option value="pending">Pending</option>
                     </select>
                     <CaretDown size={14} weight="bold" className="filter-caret" />
                 </div>
@@ -469,12 +353,6 @@ export default function ClientsPage() {
                                             sortDirection === 'asc' ? <CaretUp size={14} weight="bold" /> : <CaretDown size={14} weight="bold" />
                                         )}
                                     </th>
-                                    <th className="sortable" onClick={() => handleSort('provider')}>
-                                        Provider
-                                        {sortField === 'provider' && (
-                                            sortDirection === 'asc' ? <CaretUp size={14} weight="bold" /> : <CaretDown size={14} weight="bold" />
-                                        )}
-                                    </th>
                                     <th className="sortable" onClick={() => handleSort('lastVisit')}>
                                         Last Visit
                                         {sortField === 'lastVisit' && (
@@ -491,43 +369,46 @@ export default function ClientsPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredClients.map((client) => (
+                                {sortedClients.map((client) => (
                                     <tr key={client.id}>
                                         <td>
                                             <Link to={`/clients/${client.id}`} className="client-cell">
                                                 <div className="client-avatar">
-                                                    {client.firstName[0]}{client.lastName[0]}
+                                                    {client.first_name[0]}{client.last_name[0]}
                                                 </div>
                                                 <div className="client-info">
-                                                    <p className="client-name">{client.firstName} {client.lastName}</p>
-                                                    <p className="client-meta">Age {calculateAge(client.dateOfBirth)} · DOB {formatDate(client.dateOfBirth)}</p>
+                                                    <p className="client-name">{client.first_name} {client.last_name}</p>
+                                                    <p className="client-meta">
+                                                        {client.age != null ? `Age ${client.age}` : `Age ${calculateAge(client.date_of_birth)}`} · DOB {formatDate(client.date_of_birth)}
+                                                    </p>
                                                 </div>
                                             </Link>
                                         </td>
                                         <td>
                                             <div className="contact-cell">
-                                                <span className="contact-item">
-                                                    <Phone size={14} weight="regular" />
-                                                    {client.phone}
-                                                </span>
-                                                <span className="contact-item">
-                                                    <EnvelopeSimple size={14} weight="regular" />
-                                                    {client.email}
-                                                </span>
+                                                {client.phone && (
+                                                    <span className="contact-item">
+                                                        <Phone size={14} weight="regular" />
+                                                        {client.phone}
+                                                    </span>
+                                                )}
+                                                {client.email && (
+                                                    <span className="contact-item">
+                                                        <EnvelopeSimple size={14} weight="regular" />
+                                                        {client.email}
+                                                    </span>
+                                                )}
                                             </div>
                                         </td>
                                         <td>
-                                            <span className="font-semibold">{client.insurance}</span>
+                                            <span className="font-semibold">{client.insurance_primary_name || '—'}</span>
                                         </td>
                                         <td>
-                                            <span>{client.provider}</span>
+                                            <span>{formatDate(client.next_appointment)}</span>
                                         </td>
                                         <td>
-                                            <span>{formatDate(client.lastVisit)}</span>
-                                        </td>
-                                        <td>
-                                            <span className={`badge badge-${client.status}`}>
-                                                {client.status.charAt(0).toUpperCase() + client.status.slice(1)}
+                                            <span className={`badge badge-${client.is_active ? 'active' : 'inactive'}`}>
+                                                {client.is_active ? 'Active' : 'Inactive'}
                                             </span>
                                         </td>
                                         <td>
@@ -537,7 +418,7 @@ export default function ClientsPage() {
                                 ))}
                             </tbody>
                         </table>
-                        {filteredClients.length === 0 && (
+                        {sortedClients.length === 0 && (
                             <EmptyState
                                 variant={searchQuery || statusFilter !== 'all' ? 'no-results' : 'no-data'}
                                 title={searchQuery || statusFilter !== 'all' ? 'No clients found' : 'No clients yet'}
@@ -578,7 +459,7 @@ export default function ClientsPage() {
                 onConfirm={handleConfirmDelete}
                 title="Delete Client"
                 message={selectedClient
-                    ? `Are you sure you want to delete ${selectedClient.firstName} ${selectedClient.lastName}? This action cannot be undone.`
+                    ? `Are you sure you want to delete ${selectedClient.first_name} ${selectedClient.last_name}? This action cannot be undone.`
                     : ''
                 }
                 confirmLabel="Delete"
@@ -592,7 +473,7 @@ export default function ClientsPage() {
                 onClose={() => setIsImportModalOpen(false)}
                 onImportComplete={(count) => {
                     toast.success(`Imported ${count} clients`)
-                    // TODO: Refresh client list after import
+                    fetchClients() // Refresh after import
                 }}
             />
         </DashboardLayout>

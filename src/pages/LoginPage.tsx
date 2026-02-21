@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context'
 import { loginSchema } from '../lib/validationSchemas'
+import { toast } from 'react-hot-toast'
 import {
     Eye,
     EyeSlash,
@@ -10,6 +12,7 @@ import {
 
 export default function LoginPage() {
     const navigate = useNavigate()
+    const { login } = useAuth()
     const [showPassword, setShowPassword] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
     const [errors, setErrors] = useState<Record<string, string>>({})
@@ -45,12 +48,20 @@ export default function LoginPage() {
         }
 
         setIsLoading(true)
-        // TODO: Add actual authentication
-        setTimeout(() => {
-            localStorage.setItem('sirena_auth', 'true')
-            setIsLoading(false)
+        try {
+            await login({ email: formData.email, password: formData.password })
+            toast.success('Welcome back!')
             navigate('/dashboard')
-        }, 1500)
+        } catch (error: any) {
+            const message =
+                error?.response?.data?.non_field_errors?.[0] ||
+                error?.response?.data?.detail ||
+                error?.response?.data?.message ||
+                'Invalid email or password'
+            toast.error(message)
+        } finally {
+            setIsLoading(false)
+        }
     }
 
     return (

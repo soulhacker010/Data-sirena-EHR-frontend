@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import toast from 'react-hot-toast'
 import { useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
+import { PageSkeleton, EmptyState } from '../components/ui'
+import { reportsApi } from '../api'
+import type { AuthorizationReport } from '../api/reports'
 import {
     ArrowLeft,
     Download,
-    FunnelSimple,
     MagnifyingGlass,
     Warning,
     CheckCircle,
@@ -12,323 +15,197 @@ import {
     ArrowsClockwise
 } from '@phosphor-icons/react'
 
-// Mock authorization data
-const mockAuthorizations = [
-    {
-        id: 1,
-        clientName: 'Sarah Johnson',
-        clientId: '1',
-        serviceCode: '97153',
-        serviceName: 'Adaptive Behavior Treatment',
-        payer: 'Blue Cross',
-        startDate: '2026-01-01',
-        endDate: '2026-06-30',
-        totalUnits: 480,
-        usedUnits: 384,
-        remainingUnits: 96,
-        percentUsed: 80,
-        status: 'active'
-    },
-    {
-        id: 2,
-        clientName: 'Michael Chen',
-        clientId: '2',
-        serviceCode: '97153',
-        serviceName: 'Adaptive Behavior Treatment',
-        payer: 'Aetna',
-        startDate: '2026-01-15',
-        endDate: '2026-07-15',
-        totalUnits: 520,
-        usedUnits: 494,
-        remainingUnits: 26,
-        percentUsed: 95,
-        status: 'active'
-    },
-    {
-        id: 3,
-        clientName: 'Emma Davis',
-        clientId: '3',
-        serviceCode: '97155',
-        serviceName: 'Behavior Modification',
-        payer: 'United Healthcare',
-        startDate: '2025-12-01',
-        endDate: '2026-05-31',
-        totalUnits: 400,
-        usedUnits: 200,
-        remainingUnits: 200,
-        percentUsed: 50,
-        status: 'active'
-    },
-    {
-        id: 4,
-        clientName: 'James Wilson',
-        clientId: '4',
-        serviceCode: '97153',
-        serviceName: 'Adaptive Behavior Treatment',
-        payer: 'Cigna',
-        startDate: '2026-02-01',
-        endDate: '2026-08-01',
-        totalUnits: 600,
-        usedUnits: 120,
-        remainingUnits: 480,
-        percentUsed: 20,
-        status: 'active'
-    },
-    {
-        id: 5,
-        clientName: 'Olivia Martinez',
-        clientId: '5',
-        serviceCode: '97153',
-        serviceName: 'Adaptive Behavior Treatment',
-        payer: 'Blue Cross',
-        startDate: '2025-11-01',
-        endDate: '2026-04-30',
-        totalUnits: 480,
-        usedUnits: 480,
-        remainingUnits: 0,
-        percentUsed: 100,
-        status: 'exhausted'
-    },
-    {
-        id: 6,
-        clientName: 'Liam Brown',
-        clientId: '6',
-        serviceCode: '97156',
-        serviceName: 'Family Training',
-        payer: 'Medicaid',
-        startDate: '2026-01-01',
-        endDate: '2026-03-31',
-        totalUnits: 120,
-        usedUnits: 60,
-        remainingUnits: 60,
-        percentUsed: 50,
-        status: 'expiring_soon'
-    }
-]
+const formatDate = (date: string) =>
+    new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
 export default function AuthorizationReportPage() {
     const navigate = useNavigate()
-    const [searchTerm, setSearchTerm] = useState('')
-    const [filterPayer, setFilterPayer] = useState('all')
-    const [filterStatus, setFilterStatus] = useState('all')
-    const [filterService, setFilterService] = useState('all')
+    const [data, setData] = useState<AuthorizationReport | null>(null)
+    const [isLoading, setIsLoading] = useState(true)
+    const [searchQuery, setSearchQuery] = useState('')
+    const [statusFilter, setStatusFilter] = useState('')
+    const [payerFilter, setPayerFilter] = useState('')
 
-    // Get unique payers and services for filter dropdowns
-    const payers = [...new Set(mockAuthorizations.map(a => a.payer))]
-    const services = [...new Set(mockAuthorizations.map(a => a.serviceCode))]
-
-    // Filter authorizations
-    const filteredAuths = mockAuthorizations.filter(auth => {
-        const matchesSearch = auth.clientName.toLowerCase().includes(searchTerm.toLowerCase())
-        const matchesPayer = filterPayer === 'all' || auth.payer === filterPayer
-        const matchesService = filterService === 'all' || auth.serviceCode === filterService
-        const matchesStatus = filterStatus === 'all' ||
-            (filterStatus === 'critical' && auth.percentUsed >= 95) ||
-            (filterStatus === 'warning' && auth.percentUsed >= 80 && auth.percentUsed < 95) ||
-            (filterStatus === 'healthy' && auth.percentUsed < 80)
-
-        return matchesSearch && matchesPayer && matchesService && matchesStatus
-    })
-
-    const getUsageClass = (percent: number) => {
-        if (percent >= 95) return 'usage-critical'
-        if (percent >= 80) return 'usage-warning'
-        return 'usage-healthy'
+    const loadReport = async () => {
+        try {
+            setIsLoading(true)
+            const report = await reportsApi.getAuthorizationReport({
+                status: statusFilter || undefined,
+                payer: payerFilter || undefined,
+            })
+            setData(report)
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to load report')
+        } finally {
+            setIsLoading(false)
+        }
     }
 
-    const getStatusIcon = (percent: number) => {
-        if (percent >= 95) return <Warning size={16} weight="fill" className="text-error" />
-        if (percent >= 80) return <Clock size={16} weight="fill" className="text-warning" />
-        return <CheckCircle size={16} weight="fill" className="text-success" />
-    }
+    useEffect(() => {
+        loadReport()
+    }, [])
 
     const handleExportCSV = () => {
-        // Create CSV content
-        const headers = ['Client', 'Service Code', 'Service Name', 'Payer', 'Start Date', 'End Date', 'Total Units', 'Used Units', 'Remaining', '% Used']
-        const rows = filteredAuths.map(auth => [
-            auth.clientName,
-            auth.serviceCode,
-            auth.serviceName,
-            auth.payer,
-            auth.startDate,
-            auth.endDate,
-            auth.totalUnits,
-            auth.usedUnits,
-            auth.remainingUnits,
-            auth.percentUsed + '%'
+        if (!data) return
+        const headers = ['Client', 'Insurance', 'Auth #', 'Service', 'Approved', 'Used', 'Remaining', 'Utilization', 'Start', 'End', 'Expired']
+        const rows = data.authorizations.map(a => [
+            a.client_name, a.insurance_name, a.authorization_number, a.service_code,
+            a.units_approved, a.units_used, a.units_remaining,
+            `${a.utilization_percent}%`, a.start_date, a.end_date, a.is_expired ? 'Yes' : 'No'
         ])
-
         const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n')
         const blob = new Blob([csvContent], { type: 'text/csv' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
         a.href = url
-        a.download = `authorization_report_${new Date().toISOString().split('T')[0]}.csv`
+        a.download = `authorization-report-${new Date().toISOString().split('T')[0]}.csv`
         a.click()
+        URL.revokeObjectURL(url)
+        toast.success('Report exported')
     }
 
-    const handleRenew = (authId: number) => {
-        // Navigate to authorization detail/renew page 
-        navigate(`/reports/authorizations?renew=${authId}`)
+    if (isLoading || !data) {
+        return (
+            <DashboardLayout>
+                <PageSkeleton />
+            </DashboardLayout>
+        )
     }
 
-    // Summary stats
-    const totalAuths = filteredAuths.length
-    const criticalAuths = filteredAuths.filter(a => a.percentUsed >= 95).length
-    const warningAuths = filteredAuths.filter(a => a.percentUsed >= 80 && a.percentUsed < 95).length
+    // Compute summary stats
+    const allAuths = data.authorizations
+    const total = allAuths.length
+    const critical = allAuths.filter(a => a.utilization_percent >= 80 && !a.is_expired).length
+    const expiring = allAuths.filter(a => {
+        const daysLeft = (new Date(a.end_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+        return daysLeft < 30 && daysLeft > 0
+    }).length
+    const expired = allAuths.filter(a => a.is_expired).length
+
+    // Filter
+    const filtered = allAuths.filter(a => {
+        const matchesSearch = `${a.client_name} ${a.insurance_name} ${a.authorization_number}`
+            .toLowerCase().includes(searchQuery.toLowerCase())
+        return matchesSearch
+    })
 
     return (
         <DashboardLayout>
             <div className="page-header">
-                <div className="page-header-content">
+                <div className="page-header-left">
                     <button className="btn-ghost" onClick={() => navigate('/reports')}>
-                        <ArrowLeft size={20} />
-                        Back to Reports
+                        <ArrowLeft size={20} /> Back to Reports
                     </button>
-                    <h1 className="page-title">Authorization Usage Report</h1>
-                    <p className="page-subtitle">Monitor authorization utilization across all clients</p>
+                    <h1 className="page-title">
+                        <ArrowsClockwise size={28} weight="duotone" />
+                        Authorization Report
+                    </h1>
                 </div>
-                <div className="page-header-actions">
-                    <button className="btn-secondary" onClick={handleExportCSV}>
-                        <Download size={18} />
-                        Export CSV
-                    </button>
+                <button className="btn-secondary" onClick={handleExportCSV}>
+                    <Download size={18} weight="bold" /> Export CSV
+                </button>
+            </div>
+
+            {/* Summary Stats */}
+            <div className="report-stats-grid">
+                <div className="report-stat-card">
+                    <CheckCircle size={24} weight="duotone" className="icon-primary" />
+                    <p className="stat-value">{total}</p>
+                    <p className="stat-label">Total Authorizations</p>
+                </div>
+                <div className="report-stat-card warning">
+                    <Warning size={24} weight="duotone" className="icon-warning" />
+                    <p className="stat-value">{critical}</p>
+                    <p className="stat-label">Critical (≥80%)</p>
+                </div>
+                <div className="report-stat-card">
+                    <Clock size={24} weight="duotone" className="icon-warning" />
+                    <p className="stat-value">{expiring}</p>
+                    <p className="stat-label">Expiring Soon</p>
+                </div>
+                <div className="report-stat-card danger">
+                    <Warning size={24} weight="fill" className="icon-error" />
+                    <p className="stat-value">{expired}</p>
+                    <p className="stat-label">Expired</p>
                 </div>
             </div>
 
-            {/* Summary Cards */}
-            <div className="report-summary-cards">
-                <div className="report-summary-card">
-                    <span className="summary-label">Total Authorizations</span>
-                    <span className="summary-value">{totalAuths}</span>
-                </div>
-                <div className="report-summary-card warning">
-                    <span className="summary-label">
-                        <Clock size={16} weight="fill" />
-                        High Usage (80-94%)
-                    </span>
-                    <span className="summary-value">{warningAuths}</span>
-                </div>
-                <div className="report-summary-card critical">
-                    <span className="summary-label">
-                        <Warning size={16} weight="fill" />
-                        Critical (95%+)
-                    </span>
-                    <span className="summary-value">{criticalAuths}</span>
-                </div>
-            </div>
-
-            {/* Filters */}
-            <div className="report-filters">
-                <div className="search-box">
-                    <MagnifyingGlass size={18} />
+            {/* Search / Filter */}
+            <div className="filter-bar">
+                <div className="search-input-wrapper">
+                    <MagnifyingGlass size={18} className="search-icon" />
                     <input
                         type="text"
-                        placeholder="Search by client name..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="search-input"
+                        placeholder="Search by client, payer, or auth #..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
                     />
                 </div>
-
-                <div className="filter-group">
-                    <FunnelSimple size={18} />
-                    <select value={filterPayer} onChange={(e) => setFilterPayer(e.target.value)}>
-                        <option value="all">All Payers</option>
-                        {payers.map(payer => (
-                            <option key={payer} value={payer}>{payer}</option>
-                        ))}
-                    </select>
-
-                    <select value={filterService} onChange={(e) => setFilterService(e.target.value)}>
-                        <option value="all">All Services</option>
-                        {services.map(service => (
-                            <option key={service} value={service}>{service}</option>
-                        ))}
-                    </select>
-
-                    <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
-                        <option value="all">All Status</option>
-                        <option value="critical">Critical (95%+)</option>
-                        <option value="warning">Warning (80-94%)</option>
-                        <option value="healthy">Healthy (&lt;80%)</option>
-                    </select>
-                </div>
+                <button className="btn-secondary btn-sm" onClick={loadReport}>
+                    <ArrowsClockwise size={16} /> Refresh
+                </button>
             </div>
 
-            {/* Data Table */}
+            {/* Authorization Table */}
             <div className="card">
-                <table className="data-table">
-                    <thead>
-                        <tr>
-                            <th style={{ width: '5%', textAlign: 'center' }}>Status</th>
-                            <th style={{ width: '14%' }}>Client</th>
-                            <th style={{ width: '16%' }}>Service</th>
-                            <th style={{ width: '10%' }}>Payer</th>
-                            <th style={{ width: '16%' }}>Period</th>
-                            <th style={{ textAlign: 'center' }}>Total Units</th>
-                            <th style={{ textAlign: 'center' }}>Used</th>
-                            <th style={{ textAlign: 'center' }}>Remaining</th>
-                            <th style={{ width: '13%' }}>Usage</th>
-                            <th style={{ width: '8%', textAlign: 'center' }}>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {filteredAuths.map(auth => (
-                            <tr key={auth.id} className={getUsageClass(auth.percentUsed)}>
-                                <td style={{ textAlign: 'center' }}>{getStatusIcon(auth.percentUsed)}</td>
-                                <td>
-                                    <a
-                                        href={`/clients/${auth.clientId}`}
-                                        className="link-primary"
-                                    >
-                                        {auth.clientName}
-                                    </a>
-                                </td>
-                                <td>
-                                    <div>
-                                        <strong>{auth.serviceCode}</strong>
-                                        <span className="text-muted block">{auth.serviceName}</span>
-                                    </div>
-                                </td>
-                                <td>{auth.payer}</td>
-                                <td>
-                                    <span className="text-sm">
-                                        {new Date(auth.startDate).toLocaleDateString()} - {new Date(auth.endDate).toLocaleDateString()}
-                                    </span>
-                                </td>
-                                <td style={{ textAlign: 'center' }}>{auth.totalUnits}</td>
-                                <td style={{ textAlign: 'center' }}>{auth.usedUnits}</td>
-                                <td style={{ textAlign: 'center' }}>{auth.remainingUnits}</td>
-                                <td>
-                                    <div className="usage-bar-container">
-                                        <div
-                                            className={`usage-bar ${getUsageClass(auth.percentUsed)}`}
-                                            style={{ width: `${Math.min(auth.percentUsed, 100)}%` }}
-                                        />
-                                        <span className="usage-percent">{auth.percentUsed}%</span>
-                                    </div>
-                                </td>
-                                <td style={{ textAlign: 'center' }}>
-                                    {auth.percentUsed >= 80 && (
-                                        <button
-                                            className="btn-sm btn-outline"
-                                            onClick={() => handleRenew(auth.id)}
-                                        >
-                                            <ArrowsClockwise size={14} />
-                                            Renew
-                                        </button>
-                                    )}
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-
-                {filteredAuths.length === 0 && (
-                    <div className="empty-state">
-                        <p>No authorizations match your filters</p>
-                    </div>
-                )}
+                <div className="card-body p-0">
+                    {filtered.length > 0 ? (
+                        <table className="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Client</th>
+                                    <th>Payer</th>
+                                    <th>Auth #</th>
+                                    <th>Service</th>
+                                    <th>Used / Approved</th>
+                                    <th>Utilization</th>
+                                    <th>Period</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filtered.map(a => {
+                                    const percent = a.utilization_percent
+                                    return (
+                                        <tr key={a.id}>
+                                            <td className="font-medium">{a.client_name}</td>
+                                            <td>{a.insurance_name}</td>
+                                            <td>{a.authorization_number}</td>
+                                            <td><span className="cpt-code">{a.service_code}</span></td>
+                                            <td>{a.units_used} / {a.units_approved}</td>
+                                            <td>
+                                                <div className="auth-progress-inline">
+                                                    <div className="auth-progress-bar-sm">
+                                                        <div
+                                                            className={`auth-progress-fill ${percent >= 80 ? 'critical' : ''}`}
+                                                            style={{ width: `${Math.min(percent, 100)}%` }}
+                                                        />
+                                                    </div>
+                                                    <span className={percent >= 80 ? 'text-red-500' : ''}>{percent}%</span>
+                                                </div>
+                                            </td>
+                                            <td className="text-muted">
+                                                {formatDate(a.start_date)} — {formatDate(a.end_date)}
+                                            </td>
+                                            <td>
+                                                {a.is_expired ? (
+                                                    <span className="badge badge-error">Expired</span>
+                                                ) : percent >= 80 ? (
+                                                    <span className="badge badge-warning">Critical</span>
+                                                ) : (
+                                                    <span className="badge badge-active">Active</span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    )
+                                })}
+                            </tbody>
+                        </table>
+                    ) : (
+                        <EmptyState variant="no-data" title="No authorizations found" description="No authorizations match the current filters." />
+                    )}
+                </div>
             </div>
         </DashboardLayout>
     )

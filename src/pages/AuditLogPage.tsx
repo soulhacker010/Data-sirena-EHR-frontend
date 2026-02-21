@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { DashboardLayout } from '../components/layout'
-import EmptyState from '../components/ui/EmptyState'
-import { PageSkeleton } from '../components/ui'
+import { EmptyState, PageSkeleton } from '../components/ui'
+import { auditApi } from '../api'
+import type { AuditLog } from '../types'
 import {
     ClockCounterClockwise,
     MagnifyingGlass,
@@ -17,32 +18,6 @@ import {
     Key,
     CalendarBlank
 } from '@phosphor-icons/react'
-
-interface AuditEntry {
-    id: number
-    timestamp: string
-    userId: number
-    userName: string
-    action: 'create' | 'update' | 'delete' | 'view' | 'login' | 'logout' | 'password_change'
-    target: string
-    details: string
-    ipAddress: string
-}
-
-const mockAuditLog: AuditEntry[] = [
-    { id: 1, timestamp: '2026-02-09T15:30:00', userId: 1, userName: 'Amanda Wilson', action: 'update', target: 'Client #3', details: 'Updated insurance information', ipAddress: '192.168.1.100' },
-    { id: 2, timestamp: '2026-02-09T15:15:00', userId: 2, userName: 'Jessica Martinez', action: 'create', target: 'Session Note', details: 'Created note for Sarah Johnson', ipAddress: '192.168.1.105' },
-    { id: 3, timestamp: '2026-02-09T14:45:00', userId: 1, userName: 'Amanda Wilson', action: 'view', target: 'Billing Report', details: 'Viewed February revenue report', ipAddress: '192.168.1.100' },
-    { id: 4, timestamp: '2026-02-09T14:30:00', userId: 3, userName: 'Robert Kim', action: 'login', target: 'System', details: 'Logged in successfully', ipAddress: '192.168.1.110' },
-    { id: 5, timestamp: '2026-02-09T14:00:00', userId: 5, userName: 'David Chen', action: 'update', target: 'Claim #CLM-2024-0089', details: 'Resubmitted denied claim', ipAddress: '192.168.1.115' },
-    { id: 6, timestamp: '2026-02-09T13:30:00', userId: 4, userName: 'Maria Santos', action: 'create', target: 'Appointment', details: 'Scheduled appointment for Michael Chen on Feb 15', ipAddress: '192.168.1.108' },
-    { id: 7, timestamp: '2026-02-09T12:00:00', userId: 2, userName: 'Jessica Martinez', action: 'logout', target: 'System', details: 'Logged out', ipAddress: '192.168.1.105' },
-    { id: 8, timestamp: '2026-02-09T11:30:00', userId: 1, userName: 'Amanda Wilson', action: 'password_change', target: 'User #6', details: 'Reset password for Sarah Thompson', ipAddress: '192.168.1.100' },
-    { id: 9, timestamp: '2026-02-09T11:00:00', userId: 5, userName: 'David Chen', action: 'create', target: 'Invoice #INV-2024-0161', details: 'Generated invoice for Emily Rodriguez', ipAddress: '192.168.1.115' },
-    { id: 10, timestamp: '2026-02-09T10:30:00', userId: 4, userName: 'Maria Santos', action: 'update', target: 'Client #5', details: 'Updated authorization units', ipAddress: '192.168.1.108' },
-    { id: 11, timestamp: '2026-02-08T17:00:00', userId: 1, userName: 'Amanda Wilson', action: 'delete', target: 'Document', details: 'Deleted outdated consent form for David Brown', ipAddress: '192.168.1.100' },
-    { id: 12, timestamp: '2026-02-08T16:30:00', userId: 3, userName: 'Robert Kim', action: 'view', target: 'Client #2', details: 'Viewed Michael Chen profile', ipAddress: '192.168.1.110' },
-]
 
 const actionLabels: Record<string, string> = {
     create: 'Created',
@@ -75,61 +50,70 @@ const actionColors: Record<string, string> = {
 }
 
 export default function AuditLogPage() {
+    const [logs, setLogs] = useState<AuditLog[]>([])
+    const [searchQuery, setSearchQuery] = useState('')
+    const [actionFilter, setActionFilter] = useState('all')
+    const [startDate, setStartDate] = useState('')
+    const [endDate, setEndDate] = useState('')
     const [isLoading, setIsLoading] = useState(true)
 
     useEffect(() => {
-        const timer = setTimeout(() => setIsLoading(false), 800)
-        return () => clearTimeout(timer)
+        loadAuditLogs()
     }, [])
 
-    const [searchQuery, setSearchQuery] = useState('')
-    const [actionFilter, setActionFilter] = useState('all')
-    const [userFilter, setUserFilter] = useState('all')
-    const [dateFrom, setDateFrom] = useState('')
-    const [dateTo, setDateTo] = useState('')
+    // Auto-refetch when filters change
+    useEffect(() => {
+        loadAuditLogs()
+    }, [actionFilter, startDate, endDate])
 
-    // Get unique users for filter
-    const uniqueUsers = [...new Set(mockAuditLog.map(e => e.userName))]
+    const loadAuditLogs = async () => {
+        try {
+            setIsLoading(true)
+            const res = await auditApi.getAll({
+                search: searchQuery || undefined,
+                action: actionFilter !== 'all' ? actionFilter : undefined,
+                start_date: startDate || undefined,
+                end_date: endDate || undefined,
+                page_size: 100,
+            })
+            setLogs(res.results)
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to load audit logs')
+        } finally {
+            setIsLoading(false)
+        }
+    }
 
-    const filteredLog = mockAuditLog.filter(entry => {
-        const matchesSearch = entry.details.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            entry.target.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            entry.userName.toLowerCase().includes(searchQuery.toLowerCase())
-        const matchesAction = actionFilter === 'all' || entry.action === actionFilter
-        const matchesUser = userFilter === 'all' || entry.userName === userFilter
+    const handleSearch = () => {
+        loadAuditLogs()
+    }
 
-        // Date filtering
-        if (dateFrom && new Date(entry.timestamp) < new Date(dateFrom)) return false
-        if (dateTo && new Date(entry.timestamp) > new Date(dateTo + 'T23:59:59')) return false
+    const handleExportCSV = () => {
+        const csvContent = [
+            'Timestamp,User,Action,Target,Details,IP Address',
+            ...logs.map(log =>
+                `"${log.timestamp}","${log.user_name || ''}","${log.action}","${log.table_name || ''}","${log.record_id || ''}","${log.ip_address || ''}"`
+            )
+        ].join('\n')
 
-        return matchesSearch && matchesAction && matchesUser
-    })
+        const blob = new Blob([csvContent], { type: 'text/csv' })
+        const url = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `audit-log-${new Date().toISOString().split('T')[0]}.csv`
+        a.click()
+        URL.revokeObjectURL(url)
+        toast.success('Audit log exported')
+    }
 
     const formatTimestamp = (timestamp: string) => {
-        const date = new Date(timestamp)
-        return date.toLocaleDateString('en-US', {
+        return new Date(timestamp).toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',
             year: 'numeric',
             hour: '2-digit',
             minute: '2-digit'
         })
-    }
-
-    const exportToCSV = () => {
-        const headers = 'Timestamp,User,Action,Target,Details,IP Address\n'
-        const rows = filteredLog.map((e: typeof mockAuditLog[0]) =>
-            `"${e.timestamp}","${e.userName}","${e.action}","${e.target}","${e.details}","${e.ipAddress}"`
-        ).join('\n')
-        const csv = headers + rows
-        const blob = new Blob([csv], { type: 'text/csv' })
-        const url = URL.createObjectURL(blob)
-        const a = document.createElement('a')
-        a.href = url
-        a.download = 'audit_log.csv'
-        a.click()
-        URL.revokeObjectURL(url)
-        toast.success('Audit log exported successfully')
     }
 
     if (isLoading) {
@@ -143,34 +127,35 @@ export default function AuditLogPage() {
     return (
         <DashboardLayout>
             <div className="page-header">
-                <div className="page-header-content">
+                <div className="page-header-left">
                     <h1 className="page-title">
-                        <ClockCounterClockwise size={28} weight="duotone" className="page-title-icon" />
+                        <ClockCounterClockwise size={28} weight="duotone" />
                         Audit Log
                     </h1>
-                    <p className="page-subtitle">Track all system activity for compliance</p>
+                    <p className="page-subtitle">{logs.length} entries</p>
                 </div>
-                <button className="btn-secondary" onClick={exportToCSV}>
+                <button className="btn-secondary" onClick={handleExportCSV} disabled={logs.length === 0}>
                     <DownloadSimple size={18} weight="bold" />
                     Export CSV
                 </button>
             </div>
 
-            {/* Filters */}
-            <div className="filters-bar filters-bar-extended">
-                <div className="search-input">
+            <div className="filter-bar">
+                <div className="search-input-wrapper">
                     <MagnifyingGlass size={18} className="search-icon" />
                     <input
                         type="text"
-                        placeholder="Search activity..."
+                        className="search-input"
+                        placeholder="Search audit log..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     />
                 </div>
                 <select
                     className="filter-select"
                     value={actionFilter}
-                    onChange={(e) => setActionFilter(e.target.value)}
+                    onChange={(e) => { setActionFilter(e.target.value) }}
                 >
                     <option value="all">All Actions</option>
                     <option value="create">Created</option>
@@ -179,97 +164,74 @@ export default function AuditLogPage() {
                     <option value="view">Viewed</option>
                     <option value="login">Login</option>
                     <option value="logout">Logout</option>
-                    <option value="password_change">Password Reset</option>
                 </select>
-                <select
-                    className="filter-select"
-                    value={userFilter}
-                    onChange={(e) => setUserFilter(e.target.value)}
-                >
-                    <option value="all">All Users</option>
-                    {uniqueUsers.map(user => (
-                        <option key={user} value={user}>{user}</option>
-                    ))}
-                </select>
-                <div className="date-range">
-                    <CalendarBlank
-                        size={18}
-                        weight="regular"
-                        onClick={() => {
-                            const input = document.querySelector('.date-range input[type="date"]') as HTMLInputElement;
-                            if (input) input.showPicker?.();
-                        }}
-                    />
+                <div className="date-filter">
+                    <CalendarBlank size={16} />
                     <input
                         type="date"
-                        value={dateFrom}
-                        onChange={(e) => setDateFrom(e.target.value)}
-                        placeholder="From"
+                        className="date-input"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
                     />
                     <span>to</span>
                     <input
                         type="date"
-                        value={dateTo}
-                        onChange={(e) => setDateTo(e.target.value)}
-                        placeholder="To"
+                        className="date-input"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
                     />
                 </div>
+                <button className="btn-secondary btn-sm" onClick={handleSearch}>
+                    <MagnifyingGlass size={16} /> Search
+                </button>
             </div>
 
-            {/* Results Count */}
-            <div className="results-info">
-                Showing {filteredLog.length} of {mockAuditLog.length} entries
-            </div>
-
-            {/* Audit Log Table */}
             <div className="card">
                 <div className="card-body p-0">
-                    <table className="data-table audit-table">
-                        <thead>
-                            <tr>
-                                <th>Timestamp</th>
-                                <th>User</th>
-                                <th>Action</th>
-                                <th>Target</th>
-                                <th>Details</th>
-                                <th>IP Address</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {filteredLog.map(entry => (
-                                <tr key={entry.id}>
-                                    <td className="text-muted timestamp-cell">
-                                        {formatTimestamp(entry.timestamp)}
-                                    </td>
-                                    <td>
-                                        <div className="user-cell-compact">
-                                            <User size={16} />
-                                            {entry.userName}
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <span className={`action-badge ${actionColors[entry.action]}`}>
-                                            {actionIcons[entry.action]}
-                                            {actionLabels[entry.action]}
-                                        </span>
-                                    </td>
-                                    <td className="font-semibold">{entry.target}</td>
-                                    <td className="details-cell">{entry.details}</td>
-                                    <td className="text-muted ip-cell">{entry.ipAddress}</td>
+                    {logs.length > 0 ? (
+                        <table className="data-table audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>User</th>
+                                    <th>Action</th>
+                                    <th>Target</th>
+                                    <th>Details</th>
+                                    <th>IP Address</th>
                                 </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                            </thead>
+                            <tbody>
+                                {logs.map(log => (
+                                    <tr key={log.id}>
+                                        <td className="text-muted">{formatTimestamp(log.timestamp)}</td>
+                                        <td>
+                                            <div className="user-cell">
+                                                <User size={16} />
+                                                <span>{log.user_name || log.user_id}</span>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <span className={`action-badge ${actionColors[log.action] || ''}`}>
+                                                {actionIcons[log.action]}
+                                                {actionLabels[log.action] || log.action}
+                                            </span>
+                                        </td>
+                                        <td>{log.table_name || '—'}</td>
+                                        <td className="audit-details">{log.record_id || '—'}</td>
+                                        <td className="text-muted font-mono">{log.ip_address || '—'}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    ) : (
+                        <EmptyState
+                            variant="no-data"
+                            title="No audit entries"
+                            description="Audit entries will appear here as users perform actions."
+                        />
+                    )}
                 </div>
             </div>
-
-            {filteredLog.length === 0 && (
-                <EmptyState
-                    variant="no-results"
-                    title="No audit entries found"
-                    description="Try adjusting your filters to see more results"
-                />
-            )}
         </DashboardLayout>
     )
 }

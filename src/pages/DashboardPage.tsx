@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
+import { useAuth } from '../context'
+import { dashboardApi } from '../api'
+import toast from 'react-hot-toast'
+import type { DashboardStats, DashboardAppointment } from '../types'
 import {
     UsersThree,
     CalendarCheck,
     FileText,
     Warning,
     TrendUp,
-    TrendDown,
     Clock,
     CalendarPlus,
     UserPlus,
@@ -20,65 +23,76 @@ import {
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { PageSkeleton } from '../components/ui'
 
-// Mock data - Sessions trend (smooth line chart)
-const sessionTrendData = [
-    { month: 'Jan', sessions: 320 },
-    { month: 'Feb', sessions: 380 },
-    { month: 'Mar', sessions: 420 },
-    { month: 'Apr', sessions: 390 },
-    { month: 'May', sessions: 480 },
-    { month: 'Jun', sessions: 520 },
-    { month: 'Jul', sessions: 490 },
-    { month: 'Aug', sessions: 550 },
-]
-
-// Today's appointments
-const todayAppointments = [
-    { id: 1, name: 'Sarah Johnson', service: 'Therapy Session', time: '9:00 AM', color: 'bg-teal-100 text-teal-700' },
-    { id: 2, name: 'Michael Chen', service: 'OT Evaluation', time: '10:30 AM', color: 'bg-blue-100 text-blue-700' },
-    { id: 3, name: 'Emily Davis', service: 'ABA Treatment', time: '1:00 PM', color: 'bg-purple-100 text-purple-700' },
-    { id: 4, name: 'James Wilson', service: 'Speech Therapy', time: '3:00 PM', color: 'bg-amber-100 text-amber-700' },
-]
-
-// Calendar data
+// Calendar data (static, UI only)
 const calendarDays = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
-const calendarDates = [
-    { day: 29, otherMonth: true }, { day: 30, otherMonth: true }, { day: 31, otherMonth: true },
-    { day: 1 }, { day: 2 }, { day: 3 }, { day: 4 },
-    { day: 5 }, { day: 6 }, { day: 7 }, { day: 8, today: true }, { day: 9 }, { day: 10 }, { day: 11 },
-    { day: 12 }, { day: 13 }, { day: 14 }, { day: 15 }, { day: 16 }, { day: 17 }, { day: 18 },
-    { day: 19 }, { day: 20 }, { day: 21 }, { day: 22 }, { day: 23 }, { day: 24 }, { day: 25 },
-    { day: 26 }, { day: 27 }, { day: 28 }, { day: 1, otherMonth: true }, { day: 2, otherMonth: true }, { day: 3, otherMonth: true }, { day: 4, otherMonth: true },
-]
 
-// Pending notes
-const pendingNotes = [
-    { id: 1, client: 'Michael Chen', date: 'Feb 5, 2026', overdue: 3 },
-    { id: 2, client: 'Lisa Thompson', date: 'Feb 4, 2026', overdue: 4 },
-    { id: 3, client: 'David Brown', date: 'Feb 6, 2026', overdue: 2 },
-]
+function getCalendarDates() {
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = now.getMonth()
+    const firstDay = new Date(year, month, 1)
+    const lastDay = new Date(year, month + 1, 0)
+    const startDow = (firstDay.getDay() + 6) % 7 // Monday=0
+    const dates: { day: number; otherMonth?: boolean; today?: boolean }[] = []
 
-// Auth alerts
-const authAlerts = [
-    { id: 1, client: 'Sarah Johnson', service: 'ABA Therapy', used: 32, total: 40 },
-    { id: 2, client: 'Emily Davis', service: 'Speech Therapy', used: 22, total: 24 },
-]
-
-// Billing data
-const billingData = {
-    monthlyRevenue: 48750,
-    pendingClaims: 12,
-    paidThisMonth: 32,
-    rejectedClaims: 2
+    // Previous month fill
+    const prevLast = new Date(year, month, 0).getDate()
+    for (let i = startDow - 1; i >= 0; i--) {
+        dates.push({ day: prevLast - i, otherMonth: true })
+    }
+    // Current month
+    for (let d = 1; d <= lastDay.getDate(); d++) {
+        dates.push({ day: d, today: d === now.getDate() })
+    }
+    // Next month fill
+    const remainder = 7 - (dates.length % 7)
+    if (remainder < 7) {
+        for (let d = 1; d <= remainder; d++) {
+            dates.push({ day: d, otherMonth: true })
+        }
+    }
+    return dates
 }
+
+function getMonthName() {
+    return new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
+// Format time from ISO string
+function formatTime(iso: string) {
+    return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+}
+
+// Appointment avatar colors
+const avatarColors = [
+    'bg-teal-100 text-teal-700',
+    'bg-blue-100 text-blue-700',
+    'bg-purple-100 text-purple-700',
+    'bg-amber-100 text-amber-700',
+    'bg-rose-100 text-rose-700',
+]
 
 export default function DashboardPage() {
     const navigate = useNavigate()
+    const { user } = useAuth()
     const [isLoading, setIsLoading] = useState(true)
+    const [stats, setStats] = useState<DashboardStats | null>(null)
+    const [error, setError] = useState<string | null>(null)
 
     useEffect(() => {
-        const timer = setTimeout(() => setIsLoading(false), 800)
-        return () => clearTimeout(timer)
+        const fetchDashboard = async () => {
+            try {
+                const data = await dashboardApi.getStats()
+                setStats(data)
+            } catch (err: any) {
+                const message = err?.response?.data?.detail || 'Failed to load dashboard data'
+                setError(message)
+                toast.error(message)
+            } finally {
+                setIsLoading(false)
+            }
+        }
+        fetchDashboard()
     }, [])
 
     if (isLoading) {
@@ -89,11 +103,41 @@ export default function DashboardPage() {
         )
     }
 
+    if (error || !stats) {
+        return (
+            <DashboardLayout>
+                <div className="page-header">
+                    <h1 className="page-title">Dashboard</h1>
+                </div>
+                <div className="card">
+                    <div className="card-body" style={{ textAlign: 'center', padding: '3rem' }}>
+                        <Warning size={48} weight="fill" style={{ color: '#DC2626', margin: '0 auto 1rem' }} />
+                        <p style={{ fontSize: '1.1rem', fontWeight: 600, color: '#64748B' }}>
+                            {error || 'Unable to load dashboard data'}
+                        </p>
+                        <button
+                            className="auth-submit-btn"
+                            style={{ marginTop: '1rem', maxWidth: '200px' }}
+                            onClick={() => window.location.reload()}
+                        >
+                            Retry
+                        </button>
+                    </div>
+                </div>
+            </DashboardLayout>
+        )
+    }
+
+    const calendarDates = getCalendarDates()
+    const billing = stats.billing_overview
+
     return (
         <DashboardLayout>
             {/* Welcome Header */}
             <div className="page-header">
-                <h1 className="page-title">Welcome back, Dr. Smith</h1>
+                <h1 className="page-title">
+                    Welcome back{user ? `, ${user.first_name}` : ''}
+                </h1>
             </div>
 
             {/* Stats Cards */}
@@ -101,11 +145,10 @@ export default function DashboardPage() {
                 <div className="stat-card" onClick={() => navigate('/clients')} style={{ cursor: 'pointer' }}>
                     <div className="stat-card-content">
                         <p className="stat-card-label">Total Clients</p>
-                        <p className="stat-card-value">127</p>
+                        <p className="stat-card-value">{stats.total_clients}</p>
                         <div className="stat-card-trend up">
                             <TrendUp size={14} weight="bold" />
-                            <span>4.6%</span>
-                            <span className="text-gray-400 font-normal ml-1">vs last week</span>
+                            <span>Active</span>
                         </div>
                     </div>
                     <div className="stat-card-icon teal">
@@ -115,12 +158,11 @@ export default function DashboardPage() {
 
                 <div className="stat-card" onClick={() => navigate('/calendar')} style={{ cursor: 'pointer' }}>
                     <div className="stat-card-content">
-                        <p className="stat-card-label">Today's Appointments</p>
-                        <p className="stat-card-value">{todayAppointments.length}</p>
+                        <p className="stat-card-label">Sessions This Month</p>
+                        <p className="stat-card-value">{stats.sessions_this_month}</p>
                         <div className="stat-card-trend up">
                             <TrendUp size={14} weight="bold" />
-                            <span>11.6%</span>
-                            <span className="text-gray-400 font-normal ml-1">scheduled</span>
+                            <span>This month</span>
                         </div>
                     </div>
                     <div className="stat-card-icon yellow">
@@ -131,10 +173,10 @@ export default function DashboardPage() {
                 <div className="stat-card" onClick={() => navigate('/notes')} style={{ cursor: 'pointer' }}>
                     <div className="stat-card-content">
                         <p className="stat-card-label">Pending Notes</p>
-                        <p className="stat-card-value">{pendingNotes.length}</p>
+                        <p className="stat-card-value">{stats.pending_notes}</p>
                         <div className="stat-card-trend down">
-                            <TrendDown size={14} weight="bold" />
-                            <span>3 overdue</span>
+                            <Clock size={14} weight="fill" />
+                            <span>Needs attention</span>
                         </div>
                     </div>
                     <div className="stat-card-icon blue">
@@ -142,17 +184,17 @@ export default function DashboardPage() {
                     </div>
                 </div>
 
-                <div className="stat-card" onClick={() => navigate('/reports/authorizations')} style={{ cursor: 'pointer' }}>
+                <div className="stat-card" onClick={() => navigate('/billing')} style={{ cursor: 'pointer' }}>
                     <div className="stat-card-content">
-                        <p className="stat-card-label">Auth Alerts</p>
-                        <p className="stat-card-value">{authAlerts.length}</p>
-                        <div className="stat-card-trend down">
-                            <Warning size={14} weight="fill" />
-                            <span>Running low</span>
+                        <p className="stat-card-label">Revenue MTD</p>
+                        <p className="stat-card-value">${stats.revenue_mtd.toLocaleString()}</p>
+                        <div className="stat-card-trend up">
+                            <CurrencyDollar size={14} weight="bold" />
+                            <span>This month</span>
                         </div>
                     </div>
                     <div className="stat-card-icon purple">
-                        <Warning size={22} weight="fill" />
+                        <CurrencyDollar size={22} weight="fill" />
                     </div>
                 </div>
             </div>
@@ -179,63 +221,8 @@ export default function DashboardPage() {
 
             {/* Main Grid - Chart + Calendar/Appointments */}
             <div className="dashboard-grid">
-                {/* Left: Chart + Billing */}
+                {/* Left: Billing Summary */}
                 <div className="space-y-6">
-                    {/* Sessions Trend Chart */}
-                    <div className="card" onClick={() => navigate('/reports/session-summary')} style={{ cursor: 'pointer' }}>
-                        <div className="card-header">
-                            <h2 className="card-title">Session Trend</h2>
-                            <select className="text-sm border border-gray-200 rounded-lg px-3 py-1.5 bg-white" onClick={(e) => e.stopPropagation()}>
-                                <option>Last 8 months</option>
-                                <option>Last 12 months</option>
-                                <option>This year</option>
-                            </select>
-                        </div>
-                        <div className="card-body">
-                            <div className="chart-container">
-                                <ResponsiveContainer width="100%" height="100%">
-                                    <AreaChart data={sessionTrendData}>
-                                        <defs>
-                                            <linearGradient id="sessionGradient" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor="#0D9488" stopOpacity={0.3} />
-                                                <stop offset="95%" stopColor="#0D9488" stopOpacity={0} />
-                                            </linearGradient>
-                                        </defs>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" vertical={false} />
-                                        <XAxis
-                                            dataKey="month"
-                                            axisLine={false}
-                                            tickLine={false}
-                                            tick={{ fill: '#64748B', fontSize: 12, fontWeight: 600 }}
-                                        />
-                                        <YAxis
-                                            axisLine={false}
-                                            tickLine={false}
-                                            tick={{ fill: '#64748B', fontSize: 12, fontWeight: 600 }}
-                                        />
-                                        <Tooltip
-                                            contentStyle={{
-                                                background: 'white',
-                                                border: '1px solid #E2E8F0',
-                                                borderRadius: '8px',
-                                                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-                                                fontWeight: 600
-                                            }}
-                                        />
-                                        <Area
-                                            type="monotone"
-                                            dataKey="sessions"
-                                            stroke="#0D9488"
-                                            strokeWidth={3}
-                                            fill="url(#sessionGradient)"
-                                            name="Sessions"
-                                        />
-                                    </AreaChart>
-                                </ResponsiveContainer>
-                            </div>
-                        </div>
-                    </div>
-
                     {/* Billing Summary */}
                     <div className="card">
                         <div className="card-header">
@@ -249,8 +236,8 @@ export default function DashboardPage() {
                                         <CurrencyDollar size={20} weight="fill" />
                                     </div>
                                     <div>
-                                        <p className="billing-item-label">Monthly Revenue</p>
-                                        <p className="billing-item-value">${billingData.monthlyRevenue.toLocaleString()}</p>
+                                        <p className="billing-item-label">Revenue MTD</p>
+                                        <p className="billing-item-value">${stats.revenue_mtd.toLocaleString()}</p>
                                     </div>
                                 </div>
                                 <div className="billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
@@ -258,17 +245,17 @@ export default function DashboardPage() {
                                         <Receipt size={20} weight="fill" />
                                     </div>
                                     <div>
-                                        <p className="billing-item-label">Pending Claims</p>
-                                        <p className="billing-item-value">{billingData.pendingClaims}</p>
+                                        <p className="billing-item-label">Invoices Pending</p>
+                                        <p className="billing-item-value">{billing.invoices_pending}</p>
                                     </div>
                                 </div>
-                                <div className="billing-item" onClick={() => navigate('/billing?tab=payments')} style={{ cursor: 'pointer' }}>
+                                <div className="billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
                                     <div className="billing-item-icon green">
                                         <CheckCircle size={20} weight="fill" />
                                     </div>
                                     <div>
-                                        <p className="billing-item-label">Paid This Month</p>
-                                        <p className="billing-item-value">{billingData.paidThisMonth}</p>
+                                        <p className="billing-item-label">Claims Submitted</p>
+                                        <p className="billing-item-value">{billing.claims_submitted}</p>
                                     </div>
                                 </div>
                                 <div className="billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
@@ -276,11 +263,26 @@ export default function DashboardPage() {
                                         <Warning size={20} weight="fill" />
                                     </div>
                                     <div>
-                                        <p className="billing-item-label">Rejected Claims</p>
-                                        <p className="billing-item-value">{billingData.rejectedClaims}</p>
+                                        <p className="billing-item-label">Claims Denied</p>
+                                        <p className="billing-item-value">{billing.claims_denied}</p>
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                    {/* Collections Rate */}
+                    <div className="card">
+                        <div className="card-header">
+                            <h2 className="card-title">Collections Rate</h2>
+                        </div>
+                        <div className="card-body" style={{ textAlign: 'center', padding: '2rem' }}>
+                            <p style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0D9488' }}>
+                                {billing.collections_rate}%
+                            </p>
+                            <p style={{ fontSize: '0.875rem', color: '#64748B', fontWeight: 600 }}>
+                                of billed amount collected this month
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -290,7 +292,7 @@ export default function DashboardPage() {
                     {/* Mini Calendar */}
                     <div className="card" onClick={() => navigate('/calendar')} style={{ cursor: 'pointer' }}>
                         <div className="card-body">
-                            <p className="mini-calendar-header">February 2026</p>
+                            <p className="mini-calendar-header">{getMonthName()}</p>
                             <div className="mini-calendar-grid">
                                 {calendarDays.map((day, i) => (
                                     <div key={i} className="mini-calendar-day-label">{day}</div>
@@ -313,115 +315,30 @@ export default function DashboardPage() {
                             <h2 className="card-title">Upcoming Appointments</h2>
                         </div>
                         <div className="card-body pt-0">
-                            {todayAppointments.map((apt) => (
-                                <div
-                                    key={apt.id}
-                                    className="appointment-item"
-                                    onClick={() => navigate(`/clients/${apt.id}`)}
-                                    style={{ cursor: 'pointer' }}
-                                >
-                                    <div className={`appointment-avatar ${apt.color}`}>
-                                        {apt.name.split(' ').map(n => n[0]).join('')}
+                            {stats.upcoming_appointments.length === 0 ? (
+                                <p style={{ color: '#94A3B8', fontWeight: 600, textAlign: 'center', padding: '2rem 0' }}>
+                                    No upcoming appointments
+                                </p>
+                            ) : (
+                                stats.upcoming_appointments.map((apt: DashboardAppointment, idx: number) => (
+                                    <div
+                                        key={apt.id}
+                                        className="appointment-item"
+                                        onClick={() => navigate('/calendar')}
+                                        style={{ cursor: 'pointer' }}
+                                    >
+                                        <div className={`appointment-avatar ${avatarColors[idx % avatarColors.length]}`}>
+                                            {apt.client_name.split(' ').map(n => n[0]).join('')}
+                                        </div>
+                                        <div className="appointment-info">
+                                            <p className="appointment-name">{apt.client_name}</p>
+                                            <p className="appointment-service">{apt.service_code} — {apt.provider_name}</p>
+                                        </div>
+                                        <span className="appointment-time">• {formatTime(apt.start_time)}</span>
                                     </div>
-                                    <div className="appointment-info">
-                                        <p className="appointment-name">{apt.name}</p>
-                                        <p className="appointment-service">{apt.service}</p>
-                                    </div>
-                                    <span className="appointment-time">• {apt.time}</span>
-                                </div>
-                            ))}
+                                ))
+                            )}
                         </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Bottom Grid - Pending Notes + Auth Alerts */}
-            <div className="dashboard-grid-full">
-                {/* Pending Notes */}
-                <div className="card">
-                    <div className="card-header">
-                        <h2 className="card-title">Pending Notes</h2>
-                        <span className="badge badge-warning">{pendingNotes.length} Overdue</span>
-                    </div>
-                    <table className="data-table">
-                        <thead>
-                            <tr>
-                                <th>Client</th>
-                                <th>Session Date</th>
-                                <th>Status</th>
-                                <th>Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {pendingNotes.map((note) => (
-                                <tr key={note.id} onClick={() => navigate(`/clients/${note.id}`)} style={{ cursor: 'pointer' }}>
-                                    <td>
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-xs font-bold text-gray-600">
-                                                {note.client.split(' ').map(n => n[0]).join('')}
-                                            </div>
-                                            <span className="font-semibold text-teal-600 hover:text-teal-700">{note.client}</span>
-                                        </div>
-                                    </td>
-                                    <td className="font-medium">{note.date}</td>
-                                    <td>
-                                        <div className="flex items-center gap-1 text-amber-600 font-bold text-xs">
-                                            <Clock size={14} weight="fill" />
-                                            {note.overdue}d overdue
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <button
-                                            className="text-teal-600 font-bold text-sm hover:text-teal-700"
-                                            onClick={(e) => { e.stopPropagation(); navigate(`/notes/new?client=${note.client}`); }}
-                                        >
-                                            Complete
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-
-                {/* Auth Alerts */}
-                <div className="card">
-                    <div className="card-header">
-                        <h2 className="card-title">Authorization Alerts</h2>
-                        <span className="badge badge-error">{authAlerts.length} Critical</span>
-                    </div>
-                    <div className="card-body">
-                        {authAlerts.map((auth) => {
-                            const percent = Math.round((auth.used / auth.total) * 100)
-                            return (
-                                <div
-                                    key={auth.id}
-                                    className="mb-5 last:mb-0"
-                                    onClick={() => navigate(`/clients/${auth.id}`)}
-                                    style={{ cursor: 'pointer' }}
-                                >
-                                    <div className="flex justify-between items-center mb-2">
-                                        <div>
-                                            <p className="font-bold text-teal-600 hover:text-teal-700">{auth.client}</p>
-                                            <p className="text-xs text-gray-500 font-medium">{auth.service}</p>
-                                        </div>
-                                        <span className={`text-sm font-bold ${percent >= 80 ? 'text-red-500' : 'text-teal-600'}`}>
-                                            {percent}% used
-                                        </span>
-                                    </div>
-                                    <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                                        <div
-                                            className={`h-full rounded-full ${percent >= 80 ? 'bg-red-500' : 'bg-teal-500'}`}
-                                            style={{ width: `${percent}%` }}
-                                        ></div>
-                                    </div>
-                                    <div className="flex justify-between text-xs text-gray-400 mt-1.5 font-semibold">
-                                        <span>{auth.used} / {auth.total} units</span>
-                                        <span>{auth.total - auth.used} remaining</span>
-                                    </div>
-                                </div>
-                            )
-                        })}
                     </div>
                 </div>
             </div>

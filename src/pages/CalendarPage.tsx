@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { PageSkeleton } from '../components/ui'
-import { appointmentsApi, clientsApi, usersApi } from '../api'
+import { appointmentsApi, clientsApi, usersApi, getApiErrorMessage } from '../api'
 import { useAuth } from '../context'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
@@ -11,6 +11,7 @@ import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin from '@fullcalendar/interaction'
 import type {
     Appointment,
+    AppointmentFilters,
     CreateAppointmentPayload,
     Client,
     User
@@ -47,13 +48,6 @@ const getStatusColor = (status: string) => {
     }
 }
 
-// Session type labels
-const sessionTypeLabels: Record<string, string> = {
-    aba_session: 'ABA Session',
-    parent_training: 'Parent Training',
-    assessment: 'Assessment',
-    supervision: 'Supervision'
-}
 
 // Helper: get the client full name from an appointment
 function aptClientName(apt: Appointment): string {
@@ -77,7 +71,7 @@ export default function CalendarPage() {
     const [currentView, setCurrentView] = useState<'dayGridMonth' | 'timeGridWeek' | 'timeGridDay'>('timeGridWeek')
     const [providerFilter, setProviderFilter] = useState('')
     const [calendarTitle, setCalendarTitle] = useState('')
-    const isAdmin = user?.role === 'admin' || user?.role === 'owner'
+    const _isAdmin = user?.role === 'admin' || user?.role === 'supervisor'
 
     // Modal states
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false)
@@ -126,7 +120,7 @@ export default function CalendarPage() {
     const fetchAppointments = useCallback(async () => {
         try {
             const range = getDateRange()
-            const filters: Record<string, string> = {
+            const filters: AppointmentFilters = {
                 start_date: range.start_date,
                 end_date: range.end_date,
             }
@@ -134,7 +128,7 @@ export default function CalendarPage() {
             const data = await appointmentsApi.getAll(filters)
             setAppointments(data)
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to load appointments')
+            toast.error(getApiErrorMessage(err, 'Failed to load appointments'))
         }
     }, [getDateRange, providerFilter])
 
@@ -145,11 +139,18 @@ export default function CalendarPage() {
             try {
                 // Fetch clients and providers in parallel
                 const [clientsRes, providersRes] = await Promise.all([
-                    clientsApi.getAll({ page_size: 500 }),
-                    usersApi.getAll({ role: 'provider', page_size: 500 }),
+                    clientsApi.getAll({ page_size: 100 }),
+                    usersApi.getAll({ page_size: 100 }).catch(() => ({ results: [], count: 0 })),
                 ])
                 setClientsList(clientsRes.results)
                 setProvidersList(providersRes.results)
+
+                // Auto-select the logged-in user as the default provider
+                if (user?.id && providersRes.results.some((p: User) => p.id === user.id)) {
+                    setFormData(prev => ({ ...prev, providerId: user.id }))
+                } else if (providersRes.results.length === 1) {
+                    setFormData(prev => ({ ...prev, providerId: providersRes.results[0].id }))
+                }
             } catch (err: any) {
                 toast.error('Failed to load filter data')
             } finally {
@@ -270,7 +271,7 @@ export default function CalendarPage() {
             fetchAppointments()
         } catch (err: any) {
             dropInfo.revert()
-            toast.error(err?.response?.data?.detail || 'Failed to reschedule')
+            toast.error(getApiErrorMessage(err, 'Failed to reschedule'))
         }
     }
 
@@ -331,7 +332,7 @@ export default function CalendarPage() {
             toast.success('Appointment cancelled')
             fetchAppointments()
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to cancel appointment')
+            toast.error(getApiErrorMessage(err, 'Failed to cancel appointment'))
         } finally {
             setIsSaving(false)
             setIsCancelDialogOpen(false)
@@ -386,6 +387,24 @@ export default function CalendarPage() {
         e.preventDefault()
         if (isSaving) return
 
+        // Frontend validation
+        if (!formData.clientId) {
+            toast.error('Please select a client')
+            return
+        }
+        if (!formData.providerId) {
+            toast.error('Please select a provider')
+            return
+        }
+        if (!formData.date) {
+            toast.error('Please select a date')
+            return
+        }
+        if (!formData.startTime || !formData.endTime) {
+            toast.error('Please set start and end times')
+            return
+        }
+
         const payload: CreateAppointmentPayload = {
             client_id: formData.clientId,
             provider_id: formData.providerId,
@@ -414,7 +433,7 @@ export default function CalendarPage() {
             setSelectedAppointment(null)
             fetchAppointments()
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to save appointment')
+            toast.error(getApiErrorMessage(err, 'Failed to save appointment'))
         } finally {
             setIsSaving(false)
         }

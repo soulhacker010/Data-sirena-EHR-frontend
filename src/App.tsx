@@ -26,6 +26,7 @@ import AuthorizationReportPage from './pages/AuthorizationReportPage'
 import MissingNotesReportPage from './pages/MissingNotesReportPage'
 import SessionSummaryReportPage from './pages/SessionSummaryReportPage'
 import BillingSummaryReportPage from './pages/BillingSummaryReportPage'
+import AnalyticsPage from './pages/AnalyticsPage'
 import SettingsPage from './pages/SettingsPage'
 import NotificationsPage from './pages/NotificationsPage'
 import UsersPage from './pages/UsersPage'
@@ -66,6 +67,7 @@ function App() {
             <Route path="/reports/missing-notes" element={<ProtectedRoute allowedRoles={SUPERVISOR_ROLES}><MissingNotesReportPage /></ProtectedRoute>} />
             <Route path="/reports/session-summary" element={<ProtectedRoute allowedRoles={SUPERVISOR_ROLES}><SessionSummaryReportPage /></ProtectedRoute>} />
             <Route path="/reports/billing-summary" element={<ProtectedRoute allowedRoles={SUPERVISOR_ROLES}><BillingSummaryReportPage /></ProtectedRoute>} />
+            <Route path="/reports/analytics" element={<ProtectedRoute allowedRoles={SUPERVISOR_ROLES}><AnalyticsPage /></ProtectedRoute>} />
 
             {/* Settings — IsAdmin */}
             <Route path="/settings" element={<ProtectedRoute allowedRoles={ADMIN_ONLY}><SettingsPage /></ProtectedRoute>} />

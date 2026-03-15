@@ -1,17 +1,17 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { PageSkeleton } from '../components/ui'
 import Modal from '../components/ui/Modal'
 import SignaturePad from '../components/ui/SignaturePad'
-import { notesApi, clientsApi, usersApi } from '../api'
+import { notesApi, clientsApi, usersApi, getApiErrorMessage } from '../api'
 import type { SessionNote, Client, User } from '../types'
 import {
     ArrowLeft,
     User as UserIcon,
     CalendarBlank,
-    Clock,
+
     FloppyDisk,
     CheckCircle,
     PencilSimple,
@@ -93,7 +93,7 @@ export default function NoteEditorPage() {
                     })
                 }
             } catch (err: any) {
-                toast.error(err?.response?.data?.detail || 'Failed to load')
+                toast.error(getApiErrorMessage(err, 'Failed to load'))
                 navigate('/notes')
             } finally {
                 setIsLoading(false)
@@ -159,7 +159,6 @@ export default function NoteEditorPage() {
                     client_id: selectedClientId,
                     template_id: selectedTemplate || undefined,
                     note_data: formContent,
-                    service_code: serviceCode || undefined,
                 })
                 setNote(created)
                 toast.success('Note created')
@@ -176,7 +175,7 @@ export default function NoteEditorPage() {
             setLastSaved(new Date().toLocaleTimeString())
             isDirtyRef.current = false // Reset dirty flag after manual save
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to save')
+            toast.error(getApiErrorMessage(err, 'Failed to save'))
         } finally {
             setIsSaving(false)
         }
@@ -193,7 +192,7 @@ export default function NoteEditorPage() {
             setShowSignatureModal(false)
             toast.success('Note signed and finalized')
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to sign')
+            toast.error(getApiErrorMessage(err, 'Failed to sign'))
         } finally {
             setIsSaving(false)
         }
@@ -229,7 +228,7 @@ export default function NoteEditorPage() {
             setSelectedSupervisor('')
             toast.success('Co-sign request sent')
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to request co-sign')
+            toast.error(getApiErrorMessage(err, 'Failed to request co-sign'))
         } finally {
             setIsSaving(false)
         }
@@ -375,10 +374,10 @@ export default function NoteEditorPage() {
                     <div className="note-editor-info-section">
                         <h4>Note Status</h4>
                         <span className={`status-badge status-${noteStatus}`}>
-                            {noteStatus === 'draft' && 'Draft'}
+                            {noteStatus === 'draft' && !coSignRequested && 'Draft'}
+                            {noteStatus === 'draft' && coSignRequested && 'Co-Sign Requested'}
                             {noteStatus === 'completed' && 'Completed'}
                             {noteStatus === 'signed' && 'Signed'}
-                            {noteStatus === 'co_sign_requested' && 'Co-Sign Requested'}
                             {noteStatus === 'co_signed' && 'Co-Signed'}
                         </span>
                     </div>

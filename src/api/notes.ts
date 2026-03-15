@@ -6,6 +6,7 @@ import type {
     UpdateNotePayload,
     SignNotePayload,
     CoSignRequestPayload,
+    CoSignNotePayload,
     NoteFilters,
     PaginatedResponse,
 } from '../types'
@@ -41,9 +42,18 @@ export const notesApi = {
         return data
     },
 
+    coSign: async (id: string, payload: CoSignNotePayload): Promise<SessionNote> => {
+        const { data } = await apiClient.post<SessionNote>(`/notes/${id}/cosign/`, payload)
+        return data
+    },
+
     // ─── Templates ────────────────────────────────────────────────────────
     getTemplates: async (): Promise<NoteTemplate[]> => {
         const { data } = await apiClient.get<NoteTemplate[]>('/notes/templates/')
         return data
+    },
+
+    delete: async (id: string): Promise<void> => {
+        await apiClient.delete(`/notes/${id}/`)
     },
 }

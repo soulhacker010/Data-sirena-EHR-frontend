@@ -28,6 +28,11 @@ export interface SessionNote {
     co_signed_at?: string
     co_signed_by?: string
     co_signer_name?: string
+    co_sign_requested_to_id?: string
+    co_sign_requested_to_name?: string
+    co_sign_requested_at?: string
+    co_sign_request_message?: string
+    is_pending_co_sign?: boolean
     is_locked: boolean
     version: number
     service_code?: string
@@ -70,11 +75,14 @@ export interface CreateNotePayload {
     template_id?: string
     note_data: Record<string, unknown>
     service_code?: string
+    session_date?: string
 }
 
 export interface UpdateNotePayload {
     note_data?: Record<string, unknown>
     status?: NoteStatus
+    service_code?: string
+    session_date?: string
 }
 
 export interface SignNotePayload {
@@ -84,6 +92,10 @@ export interface SignNotePayload {
 export interface CoSignRequestPayload {
     supervisor_id: string
     message?: string
+}
+
+export interface CoSignNotePayload {
+    supervisor_signature: string
 }
 
 export interface NoteFilters {

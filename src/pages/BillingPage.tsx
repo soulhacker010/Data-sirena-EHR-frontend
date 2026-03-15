@@ -4,6 +4,7 @@ import { DashboardLayout } from '../components/layout'
 import { Modal, ActionMenu, EmptyState, PageSkeleton } from '../components/ui'
 import { billingApi, clientsApi } from '../api'
 import type { Invoice, Claim, Payment, Client } from '../types'
+import StripePaymentForm from '../components/billing/StripePaymentForm'
 import {
     MagnifyingGlass,
     Plus,
@@ -19,7 +20,6 @@ import {
     Warning,
     Eye,
     DownloadSimple,
-    PaperPlaneTilt,
     ArrowClockwise,
     CalendarBlank,
     ChartBar,
@@ -27,7 +27,7 @@ import {
 } from '@phosphor-icons/react'
 
 // Helpers
-const formatCurrency = (amount: number) => `$${amount.toFixed(2)}`
+const formatCurrency = (amount: number | string | null | undefined) => `$${(Number(amount) || 0).toFixed(2)}`
 const formatDate = (date: string | undefined) => {
     if (!date) return '—'
     return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
@@ -73,12 +73,21 @@ export default function BillingPage() {
     const [isClaimModalOpen, setIsClaimModalOpen] = useState(false)
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
     const [isBatchInvoiceModalOpen, setIsBatchInvoiceModalOpen] = useState(false)
+    const [isCreateInvoiceOpen, setIsCreateInvoiceOpen] = useState(false)
     const [batchDateFrom, setBatchDateFrom] = useState('')
     const [batchDateTo, setBatchDateTo] = useState('')
     const [batchClients, setBatchClients] = useState<'all' | 'selected'>('all')
     const [batchGenerating, setBatchGenerating] = useState(false)
     const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
     const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null)
+
+    // Create invoice form
+    const [createInvoiceForm, setCreateInvoiceForm] = useState({
+        clientId: '',
+        invoiceDate: new Date().toISOString().split('T')[0],
+        dueDate: '',
+        items: [{ service_code: '97153', description: '', units: 1, rate: 0, amount: 0 }] as Array<{ service_code: string; description: string; units: number; rate: number; amount: number }>
+    })
 
     // Payment form
     const [paymentFormData, setPaymentFormData] = useState({
@@ -87,6 +96,8 @@ export default function BillingPage() {
         reference: ''
     })
     const [isSaving, setIsSaving] = useState(false)
+    const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null)
+    const [isStripeLoading, setIsStripeLoading] = useState(false)
 
     // Fetch invoices
     const fetchInvoices = useCallback(async () => {
@@ -123,15 +134,17 @@ export default function BillingPage() {
         const loadData = async () => {
             setIsLoading(true)
             try {
-                const [invoicesRes, claimsRes, clientsRes] = await Promise.all([
+                const [invoicesRes, claimsRes, clientsRes, paymentsRes] = await Promise.all([
                     billingApi.getInvoices({}),
                     billingApi.getClaims({}),
                     clientsApi.getAll({ page_size: 500 }),
+                    billingApi.getPayments({}),
                 ])
                 setInvoices(invoicesRes.results)
                 setInvoiceCount(invoicesRes.count)
                 setClaims(claimsRes.results)
                 setClientsList(clientsRes.results)
+                setPayments(paymentsRes.results)
             } catch (err: any) {
                 toast.error('Failed to load billing data')
             } finally {
@@ -152,10 +165,19 @@ export default function BillingPage() {
     }, [fetchClaims, isLoading])
 
     // Computed totals
+    const now = new Date()
+    const currentMonth = now.getMonth()
+    const currentYear = now.getFullYear()
     const totalOutstanding = invoices
         .filter(i => i.status !== 'paid')
-        .reduce((sum, i) => sum + i.balance, 0)
-    const totalPaid = invoices.reduce((sum, i) => sum + i.paid_amount, 0)
+        .reduce((sum, i) => sum + parseFloat(String(i.balance || 0)), 0)
+    // PAID MTD: sum payments from the current month
+    const totalPaid = payments
+        .filter(p => {
+            const d = new Date(p.payment_date)
+            return d.getMonth() === currentMonth && d.getFullYear() === currentYear
+        })
+        .reduce((sum, p) => sum + parseFloat(String(p.amount || 0)), 0)
     const pendingClaims = claims.filter(c => c.status === 'created' || c.status === 'submitted').length
 
     // Filter invoices by search locally
@@ -252,6 +274,41 @@ export default function BillingPage() {
         }
     }
 
+    const handleStripePayment = async () => {
+        if (!selectedInvoice || !paymentFormData.amount) return
+        const amount = parseFloat(paymentFormData.amount)
+        if (isNaN(amount) || amount <= 0) {
+            toast.error('Please enter a valid amount')
+            return
+        }
+        setIsStripeLoading(true)
+        try {
+            const { client_secret } = await billingApi.createStripePayment({
+                invoice_id: selectedInvoice.id,
+                amount,
+            })
+            setStripeClientSecret(client_secret)
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message || 'Failed to initialize payment')
+        } finally {
+            setIsStripeLoading(false)
+        }
+    }
+
+    const handleStripeSuccess = async () => {
+        toast.success('Payment successful!')
+        setStripeClientSecret(null)
+        setIsPaymentModalOpen(false)
+        setIsInvoiceModalOpen(false)
+        setPaymentFormData({ amount: '', paymentMethod: 'credit_card', reference: '' })
+        fetchInvoices()
+        // Also refresh payments list so Payments tab + PAID MTD update
+        try {
+            const paymentsRes = await billingApi.getPayments({})
+            setPayments(paymentsRes.results)
+        } catch { /* silent */ }
+    }
+
     const handleViewClaim = (claim: Claim) => {
         setSelectedClaim(claim)
         setIsClaimModalOpen(true)
@@ -301,13 +358,13 @@ export default function BillingPage() {
 
     // Invoice actions
     const getInvoiceActions = (invoice: Invoice) => {
-        const actions = [
-            { label: 'View Invoice', icon: <Eye size={16} />, onClick: () => handleViewInvoice(invoice) }
+        const actions: { label: string; icon: React.ReactElement; onClick: () => void }[] = [
+            { label: 'View Invoice', icon: <Eye size={16} />, onClick: () => { handleViewInvoice(invoice) } }
         ]
         if (invoice.status !== 'paid') {
             actions.push({ label: 'Record Payment', icon: <CreditCard size={16} />, onClick: () => { setSelectedInvoice(invoice); setIsPaymentModalOpen(true) } })
         }
-        actions.push({ label: 'Download PDF', icon: <DownloadSimple size={16} />, onClick: () => handleDownloadPDF(invoice) })
+        actions.push({ label: 'Download PDF', icon: <DownloadSimple size={16} />, onClick: () => { handleDownloadPDF(invoice) } })
         return actions
     }
 
@@ -343,7 +400,15 @@ export default function BillingPage() {
                         <Stack size={18} weight="bold" />
                         Generate Invoices
                     </button>
-                    <button className="btn-primary" onClick={() => setIsInvoiceModalOpen(true)}>
+                    <button className="btn-primary" onClick={() => {
+                        setCreateInvoiceForm({
+                            clientId: '',
+                            invoiceDate: new Date().toISOString().split('T')[0],
+                            dueDate: '',
+                            items: [{ service_code: '97153', description: '', units: 1, rate: 0, amount: 0 }]
+                        })
+                        setIsCreateInvoiceOpen(true)
+                    }}>
                         <Plus size={18} weight="bold" />
                         New Invoice
                     </button>
@@ -641,7 +706,7 @@ export default function BillingPage() {
                             <tbody>
                                 {filteredPayments.map(payment => (
                                     <tr key={payment.id}>
-                                        <td><span className="invoice-number">{payment.invoice_id}</span></td>
+                                        <td><span className="invoice-number">{(payment as any).invoice_number || payment.invoice_id}</span></td>
                                         <td><span className="amount success">{formatCurrency(payment.amount)}</span></td>
                                         <td>{formatDate(payment.payment_date)}</td>
                                         <td>
@@ -838,6 +903,217 @@ export default function BillingPage() {
                 )}
             </Modal>
 
+            {/* Create Invoice Modal */}
+            <Modal
+                isOpen={isCreateInvoiceOpen}
+                onClose={() => setIsCreateInvoiceOpen(false)}
+                title="New Invoice"
+                size="lg"
+            >
+                <form className="invoice-create-form" onSubmit={async (e) => {
+                    e.preventDefault()
+                    if (isSaving || !createInvoiceForm.clientId) return
+                    // Validate: every line item must have a rate > 0
+                    const invalidItems = createInvoiceForm.items.filter(item => !item.rate || item.rate <= 0)
+                    if (invalidItems.length > 0) {
+                        toast.error('All line items must have a rate greater than $0.00')
+                        return
+                    }
+                    const totalAmount = createInvoiceForm.items.reduce((sum, item) => sum + (item.units * item.rate), 0)
+                    if (totalAmount <= 0) {
+                        toast.error('Invoice total must be greater than $0.00')
+                        return
+                    }
+                    setIsSaving(true)
+                    try {
+                        await billingApi.createInvoice({
+                            client_id: createInvoiceForm.clientId,
+                            invoice_date: createInvoiceForm.invoiceDate,
+                            due_date: createInvoiceForm.dueDate || undefined,
+                            items: createInvoiceForm.items.map(item => ({
+                                service_code: item.service_code,
+                                description: item.description || undefined,
+                                units: item.units,
+                                rate: item.rate,
+                                amount: item.units * item.rate,
+                            })),
+                        })
+                        toast.success('Invoice created successfully')
+                        setIsCreateInvoiceOpen(false)
+                        fetchInvoices()
+                    } catch (err: any) {
+                        toast.error(err?.response?.data?.detail || err?.response?.data?.message || 'Failed to create invoice')
+                    } finally {
+                        setIsSaving(false)
+                    }
+                }}>
+                    <div className="form-row">
+                        <div className="form-group" style={{ flex: 2 }}>
+                            <label className="form-label">Client *</label>
+                            <select
+                                value={createInvoiceForm.clientId}
+                                onChange={(e) => setCreateInvoiceForm(prev => ({ ...prev, clientId: e.target.value }))}
+                                className="form-input-basic"
+                                required
+                            >
+                                <option value="">Select client</option>
+                                {clientsList.map(c => (
+                                    <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="form-group" style={{ flex: 1 }}>
+                            <label className="form-label">Invoice Date *</label>
+                            <input
+                                type="date"
+                                value={createInvoiceForm.invoiceDate}
+                                onChange={(e) => setCreateInvoiceForm(prev => ({ ...prev, invoiceDate: e.target.value }))}
+                                className="form-input-basic"
+                                required
+                            />
+                        </div>
+                        <div className="form-group" style={{ flex: 1 }}>
+                            <label className="form-label">Due Date</label>
+                            <input
+                                type="date"
+                                value={createInvoiceForm.dueDate}
+                                onChange={(e) => setCreateInvoiceForm(prev => ({ ...prev, dueDate: e.target.value }))}
+                                className="form-input-basic"
+                            />
+                        </div>
+                    </div>
+
+                    <h4 style={{ margin: '1rem 0 0.5rem' }}>Line Items</h4>
+                    <table className="data-table" style={{ marginBottom: '0.5rem' }}>
+                        <thead>
+                            <tr>
+                                <th style={{ width: '20%' }}>CPT Code</th>
+                                <th style={{ width: '30%' }}>Description</th>
+                                <th style={{ width: '12%', textAlign: 'center' }}>Units</th>
+                                <th style={{ width: '15%', textAlign: 'right' }}>Rate ($)</th>
+                                <th style={{ width: '15%', textAlign: 'right' }}>Amount</th>
+                                <th style={{ width: '8%' }}></th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {createInvoiceForm.items.map((item, idx) => (
+                                <tr key={idx}>
+                                    <td>
+                                        <select
+                                            value={item.service_code}
+                                            onChange={(e) => {
+                                                const items = [...createInvoiceForm.items]
+                                                items[idx] = { ...items[idx], service_code: e.target.value }
+                                                setCreateInvoiceForm(prev => ({ ...prev, items }))
+                                            }}
+                                            className="form-input-basic"
+                                            style={{ padding: '0.375rem 0.5rem', fontSize: '0.85rem' }}
+                                        >
+                                            <option value="97151">97151</option>
+                                            <option value="97153">97153</option>
+                                            <option value="97155">97155</option>
+                                            <option value="97156">97156</option>
+                                            <option value="97157">97157</option>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <input
+                                            type="text"
+                                            value={item.description}
+                                            onChange={(e) => {
+                                                const items = [...createInvoiceForm.items]
+                                                items[idx] = { ...items[idx], description: e.target.value }
+                                                setCreateInvoiceForm(prev => ({ ...prev, items }))
+                                            }}
+                                            className="form-input-basic"
+                                            style={{ padding: '0.375rem 0.5rem', fontSize: '0.85rem' }}
+                                            placeholder="Service description"
+                                        />
+                                    </td>
+                                    <td>
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            value={item.units}
+                                            onChange={(e) => {
+                                                const items = [...createInvoiceForm.items]
+                                                const units = parseInt(e.target.value) || 1
+                                                items[idx] = { ...items[idx], units, amount: units * items[idx].rate }
+                                                setCreateInvoiceForm(prev => ({ ...prev, items }))
+                                            }}
+                                            className="form-input-basic"
+                                            style={{ padding: '0.375rem 0.5rem', fontSize: '0.85rem', textAlign: 'center' }}
+                                        />
+                                    </td>
+                                    <td>
+                                        <input
+                                            type="number"
+                                            min="0.01"
+                                            step="0.01"
+                                            value={item.rate || ''}
+                                            onChange={(e) => {
+                                                const items = [...createInvoiceForm.items]
+                                                const rate = parseFloat(e.target.value) || 0
+                                                items[idx] = { ...items[idx], rate, amount: items[idx].units * rate }
+                                                setCreateInvoiceForm(prev => ({ ...prev, items }))
+                                            }}
+                                            className="form-input-basic"
+                                            style={{ padding: '0.375rem 0.5rem', fontSize: '0.85rem', textAlign: 'right', borderColor: item.rate <= 0 ? '#fca5a5' : '' }}
+                                            placeholder="Required *"
+                                            required
+                                        />
+                                    </td>
+                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>
+                                        {formatCurrency(item.units * item.rate)}
+                                    </td>
+                                    <td>
+                                        {createInvoiceForm.items.length > 1 && (
+                                            <button
+                                                type="button"
+                                                className="btn-ghost"
+                                                onClick={() => {
+                                                    const items = createInvoiceForm.items.filter((_, i) => i !== idx)
+                                                    setCreateInvoiceForm(prev => ({ ...prev, items }))
+                                                }}
+                                                style={{ padding: '0.25rem', color: '#dc2626' }}
+                                            >
+                                                <XCircle size={16} weight="bold" />
+                                            </button>
+                                        )}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+
+                    <button
+                        type="button"
+                        className="btn-ghost"
+                        onClick={() => setCreateInvoiceForm(prev => ({
+                            ...prev,
+                            items: [...prev.items, { service_code: '97153', description: '', units: 1, rate: 0, amount: 0 }]
+                        }))}
+                        style={{ fontSize: '0.85rem', color: 'var(--color-primary)', marginBottom: '1rem' }}
+                    >
+                        <Plus size={14} weight="bold" /> Add Line Item
+                    </button>
+
+                    <div className="invoice-totals" style={{ marginBottom: '1rem' }}>
+                        <div className="total-row balance">
+                            <span>Total</span>
+                            <span>{formatCurrency(createInvoiceForm.items.reduce((sum, item) => sum + (item.units * item.rate), 0))}</span>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                        <button type="button" className="btn-secondary" onClick={() => setIsCreateInvoiceOpen(false)}>Cancel</button>
+                        <button type="submit" className="btn-primary" disabled={isSaving || !createInvoiceForm.clientId}>
+                            {isSaving ? 'Creating...' : 'Create Invoice'}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
             {/* Claim Detail Modal */}
             <Modal
                 isOpen={isClaimModalOpen}
@@ -937,11 +1213,20 @@ export default function BillingPage() {
             {/* Record Payment Modal */}
             <Modal
                 isOpen={isPaymentModalOpen}
-                onClose={() => { setIsPaymentModalOpen(false); setPaymentFormData({ amount: '', paymentMethod: 'credit_card', reference: '' }) }}
+                onClose={() => { setIsPaymentModalOpen(false); setStripeClientSecret(null); setPaymentFormData({ amount: '', paymentMethod: 'credit_card', reference: '' }) }}
                 title="Record Payment"
                 size="sm"
             >
-                <form className="payment-form" onSubmit={(e) => { e.preventDefault(); handleRecordPayment() }}>
+                {stripeClientSecret && selectedInvoice ? (
+                    <StripePaymentForm
+                        clientSecret={stripeClientSecret}
+                        amount={parseFloat(paymentFormData.amount)}
+                        invoiceNumber={selectedInvoice.invoice_number}
+                        onSuccess={handleStripeSuccess}
+                        onCancel={() => setStripeClientSecret(null)}
+                    />
+                ) : (
+                <form className="payment-form" onSubmit={(e) => { e.preventDefault(); paymentFormData.paymentMethod === 'credit_card' ? handleStripePayment() : handleRecordPayment() }}>
                     {selectedInvoice && (
                         <div className="payment-invoice-info">
                             <p>Invoice: <strong>{selectedInvoice.invoice_number}</strong></p>
@@ -969,7 +1254,7 @@ export default function BillingPage() {
                             onChange={(e) => setPaymentFormData(prev => ({ ...prev, paymentMethod: e.target.value }))}
                             className="form-input-basic"
                         >
-                            <option value="credit_card">Credit Card</option>
+                            <option value="credit_card">Credit Card (Stripe)</option>
                             <option value="eft">EFT Transfer</option>
                             <option value="check">Check</option>
                             <option value="cash">Cash</option>
@@ -977,6 +1262,7 @@ export default function BillingPage() {
                         </select>
                     </div>
 
+                    {paymentFormData.paymentMethod !== 'credit_card' && (
                     <div className="form-group">
                         <label className="form-label">Reference #</label>
                         <input
@@ -987,17 +1273,26 @@ export default function BillingPage() {
                             placeholder="Check #, Transaction ID, etc."
                         />
                     </div>
+                    )}
 
                     <div className="payment-form-actions">
                         <button type="button" className="btn-secondary" onClick={() => setIsPaymentModalOpen(false)}>
                             Cancel
                         </button>
-                        <button type="submit" className="btn-primary">
-                            <CheckCircle size={16} weight="bold" />
-                            Record Payment
+                        <button type="submit" className="btn-primary" disabled={isStripeLoading || isSaving}>
+                            {paymentFormData.paymentMethod === 'credit_card' ? (
+                                isStripeLoading ? (
+                                    <><span className="spinner-sm" /> Loading...</>
+                                ) : (
+                                    <><CreditCard size={16} weight="bold" /> Pay with Card</>
+                                )
+                            ) : (
+                                <><CheckCircle size={16} weight="bold" /> Record Payment</>
+                            )}
                         </button>
                     </div>
                 </form>
+                )}
             </Modal>
 
             {/* Batch Invoice Generation Modal */}

@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { DashboardLayout } from '../components/layout'
 import { Modal, EmptyState, PageSkeleton } from '../components/ui'
 import { usersApi } from '../api'
+import { useAuth } from '../context'
 import type { User } from '../types'
 import {
     Users,
@@ -30,6 +31,7 @@ const roleColors: Record<string, string> = {
 }
 
 export default function UsersPage() {
+    const { user } = useAuth()
     const [users, setUsers] = useState<User[]>([])
     const [searchQuery, setSearchQuery] = useState('')
     const [roleFilter, setRoleFilter] = useState('all')
@@ -105,6 +107,10 @@ export default function UsersPage() {
     const handleAddUser = async () => {
         if (isSaving) return
         if (!validateForm()) return
+        if (!user?.organization_id) {
+            toast.error('Unable to determine your organization. Please sign in again.')
+            return
+        }
 
         setIsSaving(true)
         try {
@@ -114,7 +120,7 @@ export default function UsersPage() {
                 email: formData.email,
                 role: formData.role,
                 password: formData.password,
-                organization_id: '', // Backend may set this from auth context
+                organization_id: user.organization_id,
                 phone: formData.phone || undefined,
             })
             toast.success(`${formData.firstName} ${formData.lastName} has been added`)

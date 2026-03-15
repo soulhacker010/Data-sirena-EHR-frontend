@@ -17,6 +17,8 @@
     "@fullcalendar/timegrid": "^6.1.20",
     "@hookform/resolvers": "^5.2.2",
     "@phosphor-icons/react": "^2.1.10",
+    "@stripe/react-stripe-js": "^5.6.1",
+    "@stripe/stripe-js": "^8.9.0",
     "@tailwindcss/vite": "^4.1.18",
     "axios": "^1.13.4",
     "daisyui": "^5.5.18",

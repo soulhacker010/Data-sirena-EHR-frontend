@@ -2,9 +2,10 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { useSearchParams } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
+import { useAuth } from '../context'
 import { PageSkeleton } from '../components/ui'
 import { Modal, ConfirmDialog, ActionMenu, EmptyState } from '../components/ui'
-import { notesApi, clientsApi, usersApi } from '../api'
+import { notesApi, clientsApi, usersApi, getApiErrorMessage } from '../api'
 import type { SessionNote, Client, User } from '../types'
 import {
     MagnifyingGlass,
@@ -43,8 +44,11 @@ const formatDate = (date: string | undefined) => {
     })
 }
 
+const canDeleteNote = (note: SessionNote) => note.status === 'draft'
+
 export default function SessionNotesPage() {
     const [_searchParams] = useSearchParams()
+    const { user } = useAuth()
     const [isLoading, setIsLoading] = useState(true)
     const [notes, setNotes] = useState<SessionNote[]>([])
     const [totalCount, setTotalCount] = useState(0)
@@ -67,6 +71,7 @@ export default function SessionNotesPage() {
     const [isCoSignModalOpen, setIsCoSignModalOpen] = useState(false)
     const [selectedNote, setSelectedNote] = useState<SessionNote | null>(null)
     const [isDeleting, setIsDeleting] = useState(false)
+    const [isLoadingNoteDetail, setIsLoadingNoteDetail] = useState(false)
     const [coSignProviderId, setCoSignProviderId] = useState('')
     const [coSignMessage, setCoSignMessage] = useState('')
 
@@ -78,6 +83,7 @@ export default function SessionNotesPage() {
     // Signature canvas ref
     const signatureCanvasRef = useRef<HTMLCanvasElement>(null)
     const [isDrawing, setIsDrawing] = useState(false)
+    const [signatureMode, setSignatureMode] = useState<'sign' | 'cosign'>('sign')
 
     // Note editor form
     const [formData, setFormData] = useState({
@@ -104,7 +110,7 @@ export default function SessionNotesPage() {
             setNotes(response.results)
             setTotalCount(response.count)
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to load notes')
+            toast.error(getApiErrorMessage(err, 'Failed to load notes'))
         }
     }, [statusFilter, providerFilter, clientFilter, dateFrom, dateTo])
 
@@ -114,8 +120,8 @@ export default function SessionNotesPage() {
             setIsLoading(true)
             try {
                 const [clientsRes, providersRes] = await Promise.all([
-                    clientsApi.getAll({ page_size: 500 }),
-                    usersApi.getAll({ role: 'provider', page_size: 500 }),
+                    clientsApi.getAll({ page_size: 100 }),
+                    usersApi.getAll({ page_size: 100 }).catch(() => ({ results: [], count: 0 })),
                 ])
                 setClientsList(clientsRes.results)
                 setProvidersList(providersRes.results)
@@ -204,29 +210,51 @@ export default function SessionNotesPage() {
         setIsNoteEditorOpen(true)
     }
 
-    const handleViewNote = (note: SessionNote) => {
-        setSelectedNote(note)
+    const loadNoteDetail = async (note: SessionNote) => {
+        setIsLoadingNoteDetail(true)
+        try {
+            const fullNote = await notesApi.getById(note.id)
+            setSelectedNote(fullNote)
+            return fullNote
+        } catch (err: any) {
+            toast.error(getApiErrorMessage(err, 'Failed to load note details'))
+            return null
+        } finally {
+            setIsLoadingNoteDetail(false)
+        }
+    }
+
+    const handleViewNote = async (note: SessionNote) => {
+        const fullNote = await loadNoteDetail(note)
+        if (!fullNote) return
         setIsViewModalOpen(true)
     }
 
-    const handleEditNote = (note: SessionNote) => {
-        setSelectedNote(note)
-        const nd = note.note_data || {}
+    const handleEditNote = async (note: SessionNote) => {
+        const fullNote = await loadNoteDetail(note)
+        if (!fullNote) return
+        const nd = fullNote.note_data || {}
         setFormData({
-            templateId: note.template_id || 'blank',
-            clientId: note.client_id,
-            sessionDate: note.session_date || '',
-            cptCode: note.service_code || '97153',
+            templateId: fullNote.template_id || 'blank',
+            clientId: fullNote.client_id,
+            sessionDate: fullNote.session_date || '',
+            cptCode: fullNote.service_code || '97153',
             objectives: (nd.objectives as string) || '',
             interventions: (nd.interventions as string) || '',
             clientResponse: (nd.client_response as string) || '',
             notes: (nd.notes as string) || ''
         })
+        setLastSaved(null)
         setIsViewModalOpen(false)
         setIsNoteEditorOpen(true)
     }
 
     const handleDeleteClick = (note: SessionNote) => {
+        if (!canDeleteNote(note)) {
+            setIsViewModalOpen(false)
+            toast.error('Only draft notes can be deleted')
+            return
+        }
         setSelectedNote(note)
         setIsViewModalOpen(false)
         setIsDeleteDialogOpen(true)
@@ -234,13 +262,19 @@ export default function SessionNotesPage() {
 
     const handleConfirmDelete = async () => {
         if (!selectedNote) return
+        if (!canDeleteNote(selectedNote)) {
+            toast.error('Only draft notes can be deleted')
+            setIsDeleteDialogOpen(false)
+            setSelectedNote(null)
+            return
+        }
         setIsDeleting(true)
         try {
             await notesApi.delete(selectedNote.id)
             toast.success('Note deleted successfully')
             fetchNotes()
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to delete note')
+            toast.error(getApiErrorMessage(err, 'Failed to delete note'))
         } finally {
             setIsDeleting(false)
             setIsDeleteDialogOpen(false)
@@ -262,14 +296,18 @@ export default function SessionNotesPage() {
             if (selectedNote) {
                 await notesApi.update(selectedNote.id, {
                     note_data: noteData,
+                    service_code: formData.cptCode,
+                    session_date: formData.sessionDate || undefined,
                 })
                 toast.success('Note updated')
             } else {
                 await notesApi.create({
                     client_id: formData.clientId,
-                    template_id: formData.templateId !== 'blank' ? formData.templateId : undefined,
+                    // Only send template_id if it looks like a real UUID (not a local template key)
+                    template_id: formData.templateId && /^[0-9a-f]{8}-/.test(formData.templateId) ? formData.templateId : undefined,
                     note_data: noteData,
                     service_code: formData.cptCode,
+                    session_date: formData.sessionDate || undefined,
                 })
                 toast.success('Draft saved')
             }
@@ -277,13 +315,14 @@ export default function SessionNotesPage() {
             setSelectedNote(null)
             fetchNotes()
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to save note')
+            toast.error(getApiErrorMessage(err, 'Failed to save note'))
         } finally {
             setIsSaving(false)
         }
     }
 
-    const handleSignClick = () => {
+    const handleSignClick = (mode: 'sign' | 'cosign' = 'sign') => {
+        setSignatureMode(mode)
         setIsNoteEditorOpen(false)
         setIsViewModalOpen(false)
         setIsSignModalOpen(true)
@@ -296,11 +335,16 @@ export default function SessionNotesPage() {
         try {
             const canvas = signatureCanvasRef.current
             const signatureData = canvas ? canvas.toDataURL() : ''
-            await notesApi.sign(selectedNote.id, { signature_data: signatureData })
-            toast.success('Note signed successfully')
+            if (signatureMode === 'cosign') {
+                await notesApi.coSign(selectedNote.id, { supervisor_signature: signatureData })
+                toast.success('Note co-signed successfully')
+            } else {
+                await notesApi.sign(selectedNote.id, { signature_data: signatureData })
+                toast.success('Note signed successfully')
+            }
             fetchNotes()
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to sign note')
+            toast.error(getApiErrorMessage(err, signatureMode === 'cosign' ? 'Failed to co-sign note' : 'Failed to sign note'))
         } finally {
             setIsSaving(false)
             setIsSignModalOpen(false)
@@ -320,7 +364,7 @@ export default function SessionNotesPage() {
             toast.success('Co-sign request sent')
             fetchNotes()
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to send co-sign request')
+            toast.error(getApiErrorMessage(err, 'Failed to send co-sign request'))
         } finally {
             setIsSaving(false)
             setIsCoSignModalOpen(false)
@@ -335,6 +379,32 @@ export default function SessionNotesPage() {
     const getNoteInterventions = (note: SessionNote) => (note.note_data?.interventions as string) || ''
     const getNoteClientResponse = (note: SessionNote) => (note.note_data?.client_response as string) || ''
     const getNoteAdditionalNotes = (note: SessionNote) => (note.note_data?.notes as string) || ''
+    const isPendingCoSignForUser = (note: SessionNote) => (
+        !!user?.id
+        && note.status === 'signed'
+        && !!note.is_pending_co_sign
+        && note.co_sign_requested_to_id === user.id
+    )
+    const hasPendingCoSign = (note: SessionNote) => note.status === 'signed' && !!note.is_pending_co_sign
+    const isViewerCoSigner = (note: SessionNote) => !!user?.id && note.co_signed_by === user.id
+    const isViewerProvider = (note: SessionNote) => !!user?.id && note.provider_id === user.id
+    const getDisplayedStatusLabel = (note: SessionNote) => {
+        if (note.status === 'co_signed') {
+            if (isViewerProvider(note)) return 'Signed'
+            if (isViewerCoSigner(note)) return 'Co-signed'
+            return 'Co-signed'
+        }
+        if (isPendingCoSignForUser(note)) return 'Awaiting Your Co-Sign'
+        if (hasPendingCoSign(note)) return `Awaiting ${note.co_sign_requested_to_name || 'Co-Sign'}`
+        return note.status.charAt(0).toUpperCase() + note.status.slice(1).replace('_', ' ')
+    }
+    const getDisplayedBadgeClass = (note: SessionNote) => {
+        if (note.status === 'draft') return 'badge-draft'
+        if (note.status === 'completed') return 'badge-completed'
+        if (note.status === 'co_signed') return isViewerProvider(note) ? 'badge-signed' : 'badge-co_signed'
+        if (hasPendingCoSign(note)) return 'badge-warning'
+        return 'badge-signed'
+    }
 
     // Generate action menu items
     const getNoteActions = (note: SessionNote) => {
@@ -360,6 +430,20 @@ export default function SessionNotesPage() {
                     handleSignClick()
                 }
             })
+        }
+
+        if (isPendingCoSignForUser(note)) {
+            actions.push({
+                label: 'Co-Sign Note',
+                icon: <CheckCircle size={16} weight="regular" />,
+                onClick: () => {
+                    setSelectedNote(note)
+                    handleSignClick('cosign')
+                }
+            })
+        }
+
+        if (canDeleteNote(note)) {
             actions.push({
                 label: 'Delete Note',
                 icon: <Trash size={16} weight="regular" />,
@@ -506,12 +590,12 @@ export default function SessionNotesPage() {
                                     <span>{note.service_code || '—'}</span>
                                 </td>
                                 <td>
-                                    <span className={`badge badge-${note.status}`}>
+                                    <span className={`badge ${getDisplayedBadgeClass(note)}`}>
                                         {note.status === 'draft' && <PencilSimple size={12} weight="bold" />}
                                         {note.status === 'completed' && <Clock size={12} weight="bold" />}
                                         {note.status === 'signed' && <CheckCircle size={12} weight="bold" />}
                                         {note.status === 'co_signed' && <CheckCircle size={12} weight="bold" />}
-                                        {note.status.charAt(0).toUpperCase() + note.status.slice(1).replace('_', ' ')}
+                                        {getDisplayedStatusLabel(note)}
                                     </span>
                                 </td>
                                 <td onClick={(e) => e.stopPropagation()}>
@@ -543,7 +627,11 @@ export default function SessionNotesPage() {
                 title="Session Note"
                 size="lg"
             >
-                {selectedNote && (
+                {isLoadingNoteDetail ? (
+                    <div className="empty-state">
+                        <Spinner size={24} className="spin" />
+                    </div>
+                ) : selectedNote && (
                     <div className="note-view">
                         <div className="note-view-header">
                             <div className="note-view-client">
@@ -555,8 +643,8 @@ export default function SessionNotesPage() {
                                     <p>{formatDate(selectedNote.session_date || selectedNote.created_at)}</p>
                                 </div>
                             </div>
-                            <span className={`badge badge-${selectedNote.status}`}>
-                                {selectedNote.status.charAt(0).toUpperCase() + selectedNote.status.slice(1).replace('_', ' ')}
+                            <span className={`badge ${getDisplayedBadgeClass(selectedNote)}`}>
+                                {getDisplayedStatusLabel(selectedNote)}
                             </span>
                         </div>
 
@@ -616,6 +704,13 @@ export default function SessionNotesPage() {
                             </div>
                         )}
 
+                        {selectedNote.is_pending_co_sign && (
+                            <div className="note-signature">
+                                <Clock size={16} weight="fill" />
+                                Co-sign requested from {selectedNote.co_sign_requested_to_name || 'selected user'} on {formatDate(selectedNote.co_sign_requested_at)}
+                            </div>
+                        )}
+
                         <div className="note-view-actions">
                             {selectedNote.status !== 'signed' && selectedNote.status !== 'co_signed' && (
                                 <>
@@ -627,21 +722,32 @@ export default function SessionNotesPage() {
                                         <CheckCircle size={16} weight="bold" />
                                         Sign Note
                                     </button>
-                                    <button className="btn-danger-outline" onClick={() => handleDeleteClick(selectedNote)}>
-                                        <Trash size={16} weight="bold" />
-                                        Delete
-                                    </button>
+                                    {canDeleteNote(selectedNote) && (
+                                        <button className="btn-danger-outline" onClick={() => handleDeleteClick(selectedNote)}>
+                                            <Trash size={16} weight="bold" />
+                                            Delete
+                                        </button>
+                                    )}
                                 </>
                             )}
-                            {selectedNote.status === 'signed' && (
+                            {(selectedNote.status === 'signed' || selectedNote.status === 'co_signed') && (
                                 <>
-                                    <button className="btn-secondary" onClick={() => {
-                                        setIsViewModalOpen(false)
-                                        setIsCoSignModalOpen(true)
-                                    }}>
-                                        <UserPlus size={16} weight="bold" />
-                                        Request Co-Sign
-                                    </button>
+                                    {selectedNote.status === 'signed' && isPendingCoSignForUser(selectedNote) ? (
+                                        <button className="btn-primary" onClick={() => {
+                                            handleSignClick('cosign')
+                                        }}>
+                                            <CheckCircle size={16} weight="bold" />
+                                            Co-Sign Note
+                                        </button>
+                                    ) : selectedNote.status === 'signed' && !selectedNote.is_pending_co_sign ? (
+                                        <button className="btn-secondary" onClick={() => {
+                                            setIsViewModalOpen(false)
+                                            setIsCoSignModalOpen(true)
+                                        }}>
+                                            <UserPlus size={16} weight="bold" />
+                                            Request Co-Sign
+                                        </button>
+                                    ) : null}
                                     <button className="btn-secondary" onClick={() => {
                                         const nd = selectedNote.note_data || {}
                                         const content = `SESSION NOTE\n============\nClient: ${selectedNote.client_name}\nDate: ${selectedNote.session_date}\nProvider: ${selectedNote.provider_name}\nCPT: ${selectedNote.service_code}\nStatus: ${selectedNote.status}\n\nObjectives: ${nd.objectives || ''}\nInterventions: ${nd.interventions || ''}\nClient Response: ${nd.client_response || ''}\nNotes: ${nd.notes || ''}`
@@ -829,12 +935,14 @@ export default function SessionNotesPage() {
                     setIsSignModalOpen(false)
                     setSelectedNote(null)
                 }}
-                title="Sign Session Note"
+                title={signatureMode === 'cosign' ? 'Co-Sign Session Note' : 'Sign Session Note'}
                 size="md"
             >
                 <div className="signature-modal">
                     <p className="signature-disclaimer">
-                        By signing this note, I certify that the information is accurate and complete to the best of my knowledge. This action cannot be undone.
+                        {signatureMode === 'cosign'
+                            ? 'By co-signing this note, I certify that I have reviewed and approved it. This action cannot be undone.'
+                            : 'By signing this note, I certify that the information is accurate and complete to the best of my knowledge. This action cannot be undone.'}
                     </p>
 
                     <div className="signature-pad-container">
@@ -900,7 +1008,7 @@ export default function SessionNotesPage() {
                             Cancel
                         </button>
                         <button className="btn-primary" onClick={handleConfirmSign}>
-                            <CheckCircle size={18} weight="bold" /> Sign & Lock Note
+                            <CheckCircle size={18} weight="bold" /> {signatureMode === 'cosign' ? 'Co-Sign Note' : 'Sign & Lock Note'}
                         </button>
                     </div>
                 </div>

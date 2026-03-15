@@ -72,6 +72,11 @@ export const billingApi = {
         return data
     },
 
+    confirmStripePayment: async (paymentIntentId: string): Promise<{ status: string; invoice_status?: string }> => {
+        const { data } = await apiClient.post('/payments/stripe/confirm/', { payment_intent_id: paymentIntentId })
+        return data
+    },
+
     // ─── Claims ───────────────────────────────────────────────────────────
     getClaims: async (filters?: ClaimFilters): Promise<PaginatedResponse<Claim>> => {
         const { data } = await apiClient.get<PaginatedResponse<Claim>>('/claims/', { params: filters })

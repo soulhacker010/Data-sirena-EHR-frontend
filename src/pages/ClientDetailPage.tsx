@@ -3,8 +3,8 @@ import toast from 'react-hot-toast'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { Modal, EditClientModal, EmptyState, PageSkeleton, ConfirmDialog } from '../components/ui'
-import { clientsApi, billingApi } from '../api'
-import type { ClientDetail, Authorization, ClientDocument, Invoice, Payment, Claim } from '../types'
+import { clientsApi, billingApi, notesApi } from '../api'
+import type { ClientDetail, Authorization, ClientDocument, Invoice, Payment, Claim, SessionNote } from '../types'
 import {
     ArrowLeft,
     User,
@@ -87,6 +87,7 @@ export default function ClientDetailPage() {
     const [invoices, setInvoices] = useState<Invoice[]>([])
     const [payments, setPayments] = useState<Payment[]>([])
     const [claims, setClaims] = useState<Claim[]>([])
+    const [clientNotes, setClientNotes] = useState<SessionNote[]>([])
 
     const [activeTab, setActiveTab] = useState<TabType>('profile')
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
@@ -126,19 +127,19 @@ export default function ClientDetailPage() {
         const load = async () => {
             setIsLoading(true)
             try {
-                const clientData = await clientsApi.getById(id)
-                setClient(clientData)
-                setAuthorizations(clientData.authorizations || [])
-
-                // Fetch billing data in parallel
-                const [invoicesRes, paymentsRes, claimsData] = await Promise.all([
+                const [clientData, invoicesRes, paymentsRes, claimsData, notesRes] = await Promise.all([
+                    clientsApi.getById(id),
                     billingApi.getInvoices({ client_id: id }),
                     billingApi.getPayments({ client_id: id }),
                     billingApi.getClientClaims(id),
+                    notesApi.getAll({ client_id: id, page_size: 100 }),
                 ])
+                setClient(clientData)
+                setAuthorizations(clientData.authorizations || [])
                 setInvoices(invoicesRes.results)
                 setPayments(paymentsRes.results)
                 setClaims(claimsData)
+                setClientNotes(notesRes.results)
             } catch (err: any) {
                 toast.error(err?.response?.data?.detail || 'Failed to load client')
                 navigate('/clients')
@@ -153,9 +154,13 @@ export default function ClientDetailPage() {
     const refreshClient = async () => {
         if (!id) return
         try {
-            const clientData = await clientsApi.getById(id)
+            const [clientData, notesRes] = await Promise.all([
+                clientsApi.getById(id),
+                notesApi.getAll({ client_id: id, page_size: 100 }),
+            ])
             setClient(clientData)
             setAuthorizations(clientData.authorizations || [])
+            setClientNotes(notesRes.results)
         } catch {
             // silent
         }
@@ -315,7 +320,6 @@ export default function ClientDetailPage() {
     }
 
     const documents = client.documents || []
-    const recentSessions = client.recent_sessions || []
     const balance = invoices.reduce((sum, inv) => sum + inv.balance, 0)
 
     return (
@@ -418,6 +422,10 @@ export default function ClientDetailPage() {
                             <div className="card">
                                 <div className="card-header">
                                     <h2 className="card-title">Emergency Contact</h2>
+                                    <button className="btn-secondary btn-sm" onClick={handleEditClient}>
+                                        <PencilSimple size={16} weight="bold" />
+                                        Edit
+                                    </button>
                                 </div>
                                 <div className="card-body">
                                     <div className="info-list">
@@ -469,7 +477,7 @@ export default function ClientDetailPage() {
                                 <div className="card-body">
                                     <div className="quick-stats">
                                         <div className="quick-stat">
-                                            <p className="quick-stat-value">{recentSessions.length}</p>
+                                            <p className="quick-stat-value">{clientNotes.length}</p>
                                             <p className="quick-stat-label">Recent Sessions</p>
                                         </div>
                                         <div className="quick-stat">
@@ -494,25 +502,25 @@ export default function ClientDetailPage() {
                                 </div>
                                 <div className="card-body p-0">
                                     <div className="session-list">
-                                        {recentSessions.slice(0, 3).map((session) => (
-                                            <div key={session.id} className="session-item">
+                                        {clientNotes.slice(0, 3).map((note) => (
+                                            <div key={note.id} className="session-item">
                                                 <div className="session-date">
                                                     <Calendar size={16} weight="regular" />
-                                                    {formatDate(session.date)}
+                                                    {formatDate(note.session_date || note.created_at)}
                                                 </div>
                                                 <div className="session-info">
-                                                    <p className="session-type">{session.service_code}</p>
+                                                    <p className="session-type">{note.service_code || '—'}</p>
                                                     <p className="session-meta">
                                                         <Clock size={12} weight="regular" />
-                                                        {session.provider_name}
+                                                        {note.provider_name || '—'}
                                                     </p>
                                                 </div>
-                                                <span className={`badge badge-${session.status === 'completed' ? 'active' : 'error'}`}>
-                                                    {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
+                                                <span className={`badge badge-${note.status === 'signed' || note.status === 'co_signed' ? 'success' : note.status === 'draft' ? 'neutral' : 'warning'}`}>
+                                                    {note.status.charAt(0).toUpperCase() + note.status.slice(1).replace('_', ' ')}
                                                 </span>
                                             </div>
                                         ))}
-                                        {recentSessions.length === 0 && (
+                                        {clientNotes.length === 0 && (
                                             <p className="text-muted text-center" style={{ padding: '1rem' }}>No recent sessions</p>
                                         )}
                                     </div>
@@ -632,7 +640,7 @@ export default function ClientDetailPage() {
                             </button>
                         </div>
                         <div className="card-body p-0">
-                            {recentSessions.length > 0 ? (
+                            {clientNotes.length > 0 ? (
                                 <table className="data-table">
                                     <thead>
                                         <tr>
@@ -643,14 +651,14 @@ export default function ClientDetailPage() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {recentSessions.map(session => (
-                                            <tr key={session.id}>
-                                                <td>{formatDate(session.date)}</td>
-                                                <td><span className="cpt-code">{session.service_code}</span></td>
-                                                <td>{session.provider_name}</td>
+                                        {clientNotes.map(note => (
+                                            <tr key={note.id}>
+                                                <td>{formatDate(note.session_date || note.created_at)}</td>
+                                                <td><span className="cpt-code">{note.service_code || '—'}</span></td>
+                                                <td>{note.provider_name || '—'}</td>
                                                 <td>
-                                                    <span className={`badge badge-${session.status === 'completed' ? 'active' : 'error'}`}>
-                                                        {session.status.charAt(0).toUpperCase() + session.status.slice(1)}
+                                                    <span className={`badge badge-${note.status === 'signed' || note.status === 'co_signed' ? 'success' : note.status === 'draft' ? 'neutral' : 'warning'}`}>
+                                                        {note.status.charAt(0).toUpperCase() + note.status.slice(1).replace('_', ' ')}
                                                     </span>
                                                 </td>
                                             </tr>
@@ -921,13 +929,31 @@ export default function ClientDetailPage() {
             <EditClientModal
                 isOpen={isEditModalOpen}
                 onClose={() => setIsEditModalOpen(false)}
-                onSubmit={async () => {
+                onSubmit={async (formData) => {
+                    if (!id) return
+                    await clientsApi.update(id, {
+                        first_name: formData.firstName,
+                        last_name: formData.lastName,
+                        date_of_birth: formData.dateOfBirth,
+                        gender: formData.gender,
+                        phone: formData.phone,
+                        email: formData.email,
+                        address: formData.address,
+                        city: formData.city,
+                        state: formData.state,
+                        zip_code: formData.zipCode,
+                        emergency_contact_name: formData.emergencyContactName,
+                        emergency_contact_phone: formData.emergencyContactPhone,
+                        insurance_primary_name: formData.insuranceName,
+                        insurance_primary_id: formData.memberId,
+                        insurance_primary_group: formData.groupNumber,
+                    })
                     toast.success('Client updated successfully')
                     setIsEditModalOpen(false)
                     refreshClient()
                 }}
                 clientData={{
-                    id: Number(id),
+                    id,
                     firstName: client.first_name,
                     lastName: client.last_name,
                     dateOfBirth: client.date_of_birth,
@@ -938,6 +964,8 @@ export default function ClientDetailPage() {
                     city: client.city || '',
                     state: client.state || '',
                     zipCode: client.zip_code || '',
+                    emergencyContactName: client.emergency_contact_name || '',
+                    emergencyContactPhone: client.emergency_contact_phone || '',
                     insuranceName: client.insurance_primary_name || '',
                     memberId: client.insurance_primary_id || '',
                     groupNumber: client.insurance_primary_group || ''

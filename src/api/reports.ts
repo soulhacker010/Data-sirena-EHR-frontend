@@ -93,4 +93,58 @@ export const reportsApi = {
         const { data } = await apiClient.get<MissingNotesReport>('/reports/missing-notes/', { params })
         return data
     },
+
+    getAnalytics: async (params?: {
+        start_date?: string
+        end_date?: string
+    }): Promise<AnalyticsReport> => {
+        const { data } = await apiClient.get<AnalyticsReport>('/reports/analytics/', { params })
+        return data
+    },
+}
+
+// ── Analytics Report (client-requested KPIs) ────────────────────────────
+
+export interface AnalyticsReport {
+    avg_length_of_care_days: number
+    dropout_patterns: {
+        no_visit_30_days: number
+        no_visit_60_days: number
+        no_visit_90_days: number
+        total_active_clients: number
+    }
+    referral_source_roi: Array<{
+        source: string
+        clients: number
+        revenue: number
+    }>
+    revenue_per_clinical_hour: number
+    revenue_per_location: Array<{
+        location_name: string
+        is_telehealth: boolean
+        revenue: number
+        sessions: number
+    }>
+    aba_utilization: {
+        total_approved: number
+        total_used: number
+        utilization_percent: number
+        by_client: Array<{
+            client_name: string
+            authorization_number: string
+            approved: number
+            used: number
+            percent: number
+        }>
+    }
+    payment_summary: {
+        current_month: number
+        previous_month: number
+        year_to_date: number
+        monthly_trend: Array<{
+            month: string
+            total: number
+        }>
+    }
+    active_patients: number
 }

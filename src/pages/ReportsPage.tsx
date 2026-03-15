@@ -15,7 +15,8 @@ import {
     Users,
     Clock,
     CalendarCheck,
-    CreditCard
+    CreditCard,
+    TrendUp
 } from '@phosphor-icons/react'
 
 const formatCurrency = (amount: number) =>
@@ -102,6 +103,17 @@ export default function ReportsPage() {
 
             {/* Report Cards */}
             <div className="reports-grid">
+                <Link to="/reports/analytics" className="report-card">
+                    <div className="report-card-icon primary">
+                        <TrendUp size={32} weight="duotone" />
+                    </div>
+                    <div className="report-card-content">
+                        <h3>Practice Analytics</h3>
+                        <p>Length of care, dropout patterns, revenue KPIs, ABA utilization, referral ROI</p>
+                    </div>
+                    <ArrowRight size={20} />
+                </Link>
+
                 <Link to="/reports/session-summary" className="report-card">
                     <div className="report-card-icon primary">
                         <ChartBar size={32} weight="duotone" />

@@ -29,6 +29,10 @@ export const clientSchema = z.object({
     city: z.string().optional(),
     state: z.string().optional(),
     zipCode: z.string().optional(),
+    emergencyContactName: z.string().optional(),
+    emergencyContactPhone: z.string()
+        .regex(/^[\d\s\-\(\)\+]+$/, 'Please enter a valid phone number')
+        .or(z.literal('')),
     insuranceName: z.string().optional(),
     memberId: z.string().optional(),
     groupNumber: z.string().optional()

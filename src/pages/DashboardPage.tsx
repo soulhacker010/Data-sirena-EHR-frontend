@@ -230,41 +230,41 @@ export default function DashboardPage() {
                             <span className="text-sm text-gray-500 font-semibold">This Month</span>
                         </div>
                         <div className="card-body">
-                            <div className="billing-grid">
-                                <div className="billing-item" onClick={() => navigate('/billing')} style={{ cursor: 'pointer' }}>
-                                    <div className="billing-item-icon teal">
+                            <div className="dashboard-billing-grid">
+                                <div className="dashboard-billing-item" onClick={() => navigate('/billing')} style={{ cursor: 'pointer' }}>
+                                    <div className="dashboard-billing-item-icon teal">
                                         <CurrencyDollar size={20} weight="fill" />
                                     </div>
-                                    <div>
-                                        <p className="billing-item-label">Revenue MTD</p>
-                                        <p className="billing-item-value">${stats.revenue_mtd.toLocaleString()}</p>
+                                    <div className="dashboard-billing-item-content">
+                                        <p className="dashboard-billing-item-label">Revenue MTD</p>
+                                        <p className="dashboard-billing-item-value">${stats.revenue_mtd.toLocaleString()}</p>
                                     </div>
                                 </div>
-                                <div className="billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
-                                    <div className="billing-item-icon yellow">
+                                <div className="dashboard-billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
+                                    <div className="dashboard-billing-item-icon yellow">
                                         <Receipt size={20} weight="fill" />
                                     </div>
-                                    <div>
-                                        <p className="billing-item-label">Invoices Pending</p>
-                                        <p className="billing-item-value">{billing.invoices_pending}</p>
+                                    <div className="dashboard-billing-item-content">
+                                        <p className="dashboard-billing-item-label">Invoices Pending</p>
+                                        <p className="dashboard-billing-item-value">{billing.invoices_pending}</p>
                                     </div>
                                 </div>
-                                <div className="billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
-                                    <div className="billing-item-icon green">
+                                <div className="dashboard-billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
+                                    <div className="dashboard-billing-item-icon green">
                                         <CheckCircle size={20} weight="fill" />
                                     </div>
-                                    <div>
-                                        <p className="billing-item-label">Claims Submitted</p>
-                                        <p className="billing-item-value">{billing.claims_submitted}</p>
+                                    <div className="dashboard-billing-item-content">
+                                        <p className="dashboard-billing-item-label">Claims Submitted</p>
+                                        <p className="dashboard-billing-item-value">{billing.claims_submitted}</p>
                                     </div>
                                 </div>
-                                <div className="billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
-                                    <div className="billing-item-icon red">
+                                <div className="dashboard-billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
+                                    <div className="dashboard-billing-item-icon red">
                                         <Warning size={20} weight="fill" />
                                     </div>
-                                    <div>
-                                        <p className="billing-item-label">Claims Denied</p>
-                                        <p className="billing-item-value">{billing.claims_denied}</p>
+                                    <div className="dashboard-billing-item-content">
+                                        <p className="dashboard-billing-item-label">Claims Denied</p>
+                                        <p className="dashboard-billing-item-value">{billing.claims_denied}</p>
                                     </div>
                                 </div>
                             </div>

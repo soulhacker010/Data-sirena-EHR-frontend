@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { ActionMenu, AddClientModal, EditClientModal, ConfirmDialog, ImportClientsModal, EmptyState, TableSkeleton } from '../components/ui'
-import { clientsApi } from '../api'
+import { clientsApi, getApiErrorMessage } from '../api'
 import type { Client } from '../types'
 import {
     MagnifyingGlass,
@@ -86,7 +86,7 @@ export default function ClientsPage() {
             setClients(response.results)
             setTotalCount(response.count)
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to load clients')
+            toast.error(getApiErrorMessage(err, 'Failed to load clients'))
         } finally {
             setIsLoading(false)
         }
@@ -179,7 +179,7 @@ export default function ClientsPage() {
             setTotalCount(prev => prev - 1)
             toast.success('Client deleted successfully')
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to delete client')
+            toast.error(getApiErrorMessage(err, 'Failed to delete client'))
         } finally {
             setIsDeleting(false)
             setIsDeleteDialogOpen(false)
@@ -210,7 +210,7 @@ export default function ClientsPage() {
             setIsAddModalOpen(false)
             fetchClients() // Refresh list
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to add client')
+            toast.error(getApiErrorMessage(err, 'Failed to add client'))
         } finally {
             setIsSaving(false)
         }
@@ -240,7 +240,7 @@ export default function ClientsPage() {
             setSelectedClient(null)
             fetchClients() // Refresh list
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to update client')
+            toast.error(getApiErrorMessage(err, 'Failed to update client'))
         } finally {
             setIsSaving(false)
         }

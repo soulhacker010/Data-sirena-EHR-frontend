@@ -53,10 +53,12 @@ export default function LoginPage() {
             toast.success('Welcome back!')
             navigate('/dashboard')
         } catch (error: any) {
+            const data = error?.response?.data
             const message =
-                error?.response?.data?.non_field_errors?.[0] ||
-                error?.response?.data?.detail ||
-                error?.response?.data?.message ||
+                data?.message ||
+                data?.errors?.non_field_errors?.[0] ||
+                data?.non_field_errors?.[0] ||
+                data?.detail ||
                 'Invalid email or password'
             toast.error(message)
         } finally {

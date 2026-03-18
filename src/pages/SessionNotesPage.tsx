@@ -773,7 +773,7 @@ export default function SessionNotesPage() {
                                         <PencilSimple size={16} weight="bold" />
                                         Edit Note
                                     </button>
-                                    <button className="btn-secondary" onClick={handleSignClick}>
+                                    <button className="btn-secondary" onClick={() => handleSignClick()}>
                                         <CheckCircle size={16} weight="bold" />
                                         Sign Note
                                     </button>

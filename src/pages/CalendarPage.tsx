@@ -71,7 +71,6 @@ export default function CalendarPage() {
     const [currentView, setCurrentView] = useState<'dayGridMonth' | 'timeGridWeek' | 'timeGridDay'>('timeGridWeek')
     const [providerFilter, setProviderFilter] = useState('')
     const [calendarTitle, setCalendarTitle] = useState('')
-    const _isAdmin = user?.role === 'admin' || user?.role === 'supervisor'
 
     // Modal states
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false)

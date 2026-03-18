@@ -23,8 +23,8 @@ export default function AuthorizationReportPage() {
     const [data, setData] = useState<AuthorizationReport | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [searchQuery, setSearchQuery] = useState('')
-    const [statusFilter, setStatusFilter] = useState('')
-    const [payerFilter, setPayerFilter] = useState('')
+    const [statusFilter] = useState('')
+    const [payerFilter] = useState('')
 
     const loadReport = async () => {
         try {

@@ -51,7 +51,8 @@ const calculateAge = (dob: string) => {
 }
 
 // Format date
-const formatDate = (date: string) => {
+const formatDate = (date: string | undefined) => {
+    if (!date) return '—'
     return new Date(date).toLocaleDateString('en-US', {
         month: 'short',
         day: 'numeric',

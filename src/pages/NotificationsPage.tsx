@@ -33,22 +33,10 @@ interface ImportantEvent {
     source: 'notification' | 'summary' | 'activity'
 }
 
-interface DashboardActivityEvent {
-    id: string
-    user_name: string
-    action: string
-    target: string
-    timestamp: string
-}
-
-interface DashboardStatsWithActivity extends DashboardStats {
-    recent_activity: DashboardActivityEvent[]
-}
-
 export default function NotificationsPage() {
     const navigate = useNavigate()
     const [notifications, setNotifications] = useState<Notification[]>([])
-    const [dashboardStats, setDashboardStats] = useState<DashboardStatsWithActivity | null>(null)
+    const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
     const [filterType, setFilterType] = useState<string>('all')
     const [isLoading, setIsLoading] = useState(true)
 
@@ -70,7 +58,7 @@ export default function NotificationsPage() {
         }
 
         if (statsResult.status === 'fulfilled') {
-            setDashboardStats(statsResult.value as DashboardStatsWithActivity)
+            setDashboardStats(statsResult.value)
         } else {
             toast.error(getApiErrorMessage(statsResult.reason, 'Failed to load important activity'))
         }
@@ -231,10 +219,10 @@ export default function NotificationsPage() {
             }
         }
 
-        const activityEvents: ImportantEvent[] = (dashboardStats?.recent_activity || []).map((activity) => ({
-            id: `activity-${activity.id}`,
-            title: `${activity.action} ${activity.target}`,
-            message: `${activity.user_name || 'System'} ${activity.action.toLowerCase()} ${activity.target.toLowerCase()}.`,
+        const activityEvents: ImportantEvent[] = (dashboardStats?.recent_activity || []).map((activity, index) => ({
+            id: `activity-${activity.timestamp}-${index}`,
+            title: activity.type,
+            message: activity.description,
             category: 'activity',
             priority: 'low',
             is_read: true,

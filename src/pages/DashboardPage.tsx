@@ -20,7 +20,6 @@ import {
     Receipt,
     CheckCircle
 } from '@phosphor-icons/react'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 import { PageSkeleton } from '../components/ui'
 
 // Calendar data (static, UI only)

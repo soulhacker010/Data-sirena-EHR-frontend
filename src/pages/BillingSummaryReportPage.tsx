@@ -11,7 +11,6 @@ import {
     Money,
     CreditCard,
     Clock,
-    WarningCircle,
     CheckCircle,
     CalendarBlank
 } from '@phosphor-icons/react'

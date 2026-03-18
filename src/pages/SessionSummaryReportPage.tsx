@@ -15,16 +15,13 @@ import {
     CalendarBlank
 } from '@phosphor-icons/react'
 
-const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
-
 export default function SessionSummaryReportPage() {
     const navigate = useNavigate()
     const [data, setData] = useState<SessionSummaryReport | null>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [dateFrom, setDateFrom] = useState('')
     const [dateTo, setDateTo] = useState('')
-    const [filterProvider, setFilterProvider] = useState('')
+    const [filterProvider] = useState('')
 
     const loadReport = async () => {
         try {

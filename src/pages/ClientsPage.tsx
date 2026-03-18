@@ -146,6 +146,8 @@ export default function ClientsPage() {
         city: client.city || '',
         state: client.state || '',
         zipCode: client.zip_code || '',
+        emergencyContactName: client.emergency_contact_name || '',
+        emergencyContactPhone: client.emergency_contact_phone || '',
         insuranceName: client.insurance_primary_name || '',
         memberId: client.insurance_primary_id || '',
         groupNumber: client.insurance_primary_group || ''

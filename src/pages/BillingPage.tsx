@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
+import { useSearchParams } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { Modal, ActionMenu, EmptyState, PageSkeleton } from '../components/ui'
 import { billingApi, clientsApi } from '../api'
 import type { Invoice, Claim, Payment, Client } from '../types'
 import StripePaymentForm from '../components/billing/StripePaymentForm'
+import { BILLING_SERVICE_CATALOG, getBillingServiceDescription } from '../utils/billingServiceCatalog'
+
 import {
     MagnifyingGlass,
     Plus,
@@ -41,9 +44,45 @@ const paymentMethodLabels: Record<string, string> = {
     other: 'Other'
 }
 
+const getClaimStatusLabel = (status: Claim['status']) => {
+    switch (status) {
+        case 'created':
+            return 'Created (Internal)'
+        case 'submitted':
+            return 'Submitted'
+        case 'resubmitted':
+            return 'Resubmitted'
+        case 'accepted':
+            return 'Accepted'
+        case 'paid':
+            return 'Paid'
+        case 'denied':
+            return 'Denied'
+        default:
+            return status
+    }
+}
+
+type BillingTab = 'invoices' | 'claims' | 'payments' | 'aging'
+
+const cleanParams = (params: Record<string, string | number | undefined>) =>
+    Object.fromEntries(Object.entries(params).filter(([, value]) => value !== undefined)) as Record<string, string | number>
+
+const createDefaultInvoiceItem = () => ({
+    service_code: '97153',
+    description: getBillingServiceDescription('97153'),
+    units: 1,
+    rate: 0,
+    amount: 0,
+})
+
 export default function BillingPage() {
+    const [searchParams, setSearchParams] = useSearchParams()
     const [isLoading, setIsLoading] = useState(true)
-    const [activeTab, setActiveTab] = useState<'invoices' | 'claims' | 'payments' | 'aging'>('invoices')
+    const getTabFromParams = (tab: string | null): BillingTab => (
+        tab === 'claims' || tab === 'payments' || tab === 'aging' ? tab : 'invoices'
+    )
+    const [activeTab, setActiveTab] = useState<BillingTab>(getTabFromParams(searchParams.get('tab')))
 
     // Data state
     const [invoices, setInvoices] = useState<Invoice[]>([])
@@ -71,12 +110,15 @@ export default function BillingPage() {
     // Modal states
     const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false)
     const [isClaimModalOpen, setIsClaimModalOpen] = useState(false)
+    const [isCreateClaimModalOpen, setIsCreateClaimModalOpen] = useState(false)
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false)
     const [isBatchInvoiceModalOpen, setIsBatchInvoiceModalOpen] = useState(false)
     const [isCreateInvoiceOpen, setIsCreateInvoiceOpen] = useState(false)
     const [batchDateFrom, setBatchDateFrom] = useState('')
     const [batchDateTo, setBatchDateTo] = useState('')
     const [batchClients, setBatchClients] = useState<'all' | 'selected'>('all')
+    const [batchClientIds, setBatchClientIds] = useState<string[]>([])
+    const [batchClientSearch, setBatchClientSearch] = useState('')
     const [batchGenerating, setBatchGenerating] = useState(false)
     const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
     const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null)
@@ -86,7 +128,7 @@ export default function BillingPage() {
         clientId: '',
         invoiceDate: new Date().toISOString().split('T')[0],
         dueDate: '',
-        items: [{ service_code: '97153', description: '', units: 1, rate: 0, amount: 0 }] as Array<{ service_code: string; description: string; units: number; rate: number; amount: number }>
+        items: [createDefaultInvoiceItem()] as Array<{ service_code: string; description: string; units: number; rate: number; amount: number }>
     })
 
     // Payment form
@@ -95,6 +137,11 @@ export default function BillingPage() {
         paymentMethod: 'credit_card',
         reference: ''
     })
+    const [claimFormData, setClaimFormData] = useState({
+        invoiceId: '',
+        payerName: '',
+        payerId: ''
+    })
     const [isSaving, setIsSaving] = useState(false)
     const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null)
     const [isStripeLoading, setIsStripeLoading] = useState(false)
@@ -102,11 +149,12 @@ export default function BillingPage() {
     // Fetch invoices
     const fetchInvoices = useCallback(async () => {
         try {
-            const params: Record<string, string | number> = {}
-            if (invoiceStatus !== 'all') params.status = invoiceStatus
-            if (invoiceClient) params.client_id = invoiceClient
-            if (invoiceDateFrom) params.start_date = invoiceDateFrom
-            if (invoiceDateTo) params.end_date = invoiceDateTo
+            const params = cleanParams({
+                status: invoiceStatus !== 'all' ? invoiceStatus : undefined,
+                client_id: invoiceClient || undefined,
+                start_date: invoiceDateFrom || undefined,
+                end_date: invoiceDateTo || undefined,
+            })
             const response = await billingApi.getInvoices(params)
             setInvoices(response.results)
             setInvoiceCount(response.count)
@@ -118,10 +166,11 @@ export default function BillingPage() {
     // Fetch claims
     const fetchClaims = useCallback(async () => {
         try {
-            const params: Record<string, string | number> = {}
-            if (claimStatus !== 'all') params.status = claimStatus
-            if (claimDateFrom) params.start_date = claimDateFrom
-            if (claimDateTo) params.end_date = claimDateTo
+            const params = cleanParams({
+                status: claimStatus !== 'all' ? claimStatus : undefined,
+                start_date: claimDateFrom || undefined,
+                end_date: claimDateTo || undefined,
+            })
             const response = await billingApi.getClaims(params)
             setClaims(response.results)
         } catch (err: any) {
@@ -164,6 +213,24 @@ export default function BillingPage() {
         if (!isLoading) fetchClaims()
     }, [fetchClaims, isLoading])
 
+    useEffect(() => {
+        const nextTab = getTabFromParams(searchParams.get('tab'))
+        if (nextTab !== activeTab) {
+            setActiveTab(nextTab)
+        }
+    }, [activeTab, searchParams])
+
+    const handleTabChange = (tab: BillingTab) => {
+        setActiveTab(tab)
+        const nextParams = new URLSearchParams(searchParams)
+        if (tab === 'invoices') {
+            nextParams.delete('tab')
+        } else {
+            nextParams.set('tab', tab)
+        }
+        setSearchParams(nextParams, { replace: true })
+    }
+
     // Computed totals
     const now = new Date()
     const currentMonth = now.getMonth()
@@ -179,6 +246,14 @@ export default function BillingPage() {
         })
         .reduce((sum, p) => sum + parseFloat(String(p.amount || 0)), 0)
     const pendingClaims = claims.filter(c => c.status === 'created' || c.status === 'submitted').length
+    const claimedInvoiceIds = new Set(claims.map(claim => claim.invoice_id))
+    const claimableInvoices = invoices.filter(invoice => !claimedInvoiceIds.has(invoice.id) && invoice.status !== 'cancelled')
+    const filteredBatchClients = clientsList.filter(client => {
+        const query = batchClientSearch.trim().toLowerCase()
+        if (!query) return true
+        const fullName = `${client.first_name} ${client.last_name}`.toLowerCase()
+        return fullName.includes(query) || (client.email || '').toLowerCase().includes(query)
+    })
 
     // Filter invoices by search locally
     const filteredInvoices = invoices.filter(inv => {
@@ -309,6 +384,77 @@ export default function BillingPage() {
         } catch { /* silent */ }
     }
 
+    const getClientName = (clientId: string) => {
+        const client = clientsList.find(entry => entry.id === clientId)
+        return client ? `${client.first_name} ${client.last_name}` : '—'
+    }
+
+    const getDefaultPayerName = (invoiceId: string) => {
+        const invoice = invoices.find(entry => entry.id === invoiceId)
+        if (!invoice) return ''
+        const client = clientsList.find(entry => entry.id === invoice.client_id)
+        return client?.insurance_primary_name || ''
+    }
+
+    const resetClaimForm = () => {
+        setClaimFormData({ invoiceId: '', payerName: '', payerId: '' })
+    }
+
+    const openCreateClaimModal = (invoice?: Invoice) => {
+        const initialInvoice = invoice ?? claimableInvoices[0]
+        setClaimFormData({
+            invoiceId: initialInvoice?.id || '',
+            payerName: initialInvoice ? getDefaultPayerName(initialInvoice.id) : '',
+            payerId: ''
+        })
+        setIsCreateClaimModalOpen(true)
+    }
+
+    const handleClaimInvoiceChange = (invoiceId: string) => {
+        setClaimFormData(prev => {
+            const previousDefaultPayer = prev.invoiceId ? getDefaultPayerName(prev.invoiceId) : ''
+            const nextDefaultPayer = getDefaultPayerName(invoiceId)
+            const nextPayerName = !prev.payerName || prev.payerName === previousDefaultPayer
+                ? nextDefaultPayer
+                : prev.payerName
+
+            return {
+                ...prev,
+                invoiceId,
+                payerName: nextPayerName,
+            }
+        })
+    }
+
+    const handleCreateClaim = async () => {
+        if (isSaving) return
+        if (!claimFormData.invoiceId) {
+            toast.error('Select an invoice to create a claim')
+            return
+        }
+        if (!claimFormData.payerName.trim()) {
+            toast.error('Payer name is required')
+            return
+        }
+
+        setIsSaving(true)
+        try {
+            await billingApi.submitClaim({
+                invoice_id: claimFormData.invoiceId,
+                payer_name: claimFormData.payerName.trim(),
+                payer_id: claimFormData.payerId.trim() || undefined,
+            })
+            toast.success('Claim created successfully')
+            setIsCreateClaimModalOpen(false)
+            resetClaimForm()
+            fetchClaims()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || err?.response?.data?.message || 'Failed to create claim')
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
     const handleViewClaim = (claim: Claim) => {
         setSelectedClaim(claim)
         setIsClaimModalOpen(true)
@@ -329,6 +475,21 @@ export default function BillingPage() {
         }
     }
 
+    const handleSubmitClaim = async (claim: Claim) => {
+        if (isSaving) return
+        setIsSaving(true)
+        try {
+            await billingApi.markClaimSubmitted(claim.id)
+            toast.success('Claim marked as submitted')
+            setIsClaimModalOpen(false)
+            fetchClaims()
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || 'Failed to submit claim')
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
     const handleDownloadPDF = async (invoice: Invoice) => {
         try {
             await billingApi.downloadPDF(invoice.id, invoice.invoice_number)
@@ -340,20 +501,45 @@ export default function BillingPage() {
 
     const handleBatchGenerate = async () => {
         if (!batchDateFrom || !batchDateTo) return
+        if (new Date(batchDateFrom) > new Date(batchDateTo)) {
+            toast.error('From date must be on or before the to date')
+            return
+        }
+        if (batchClients === 'selected' && batchClientIds.length === 0) {
+            toast.error('Select at least one client for batch invoice generation')
+            return
+        }
         setBatchGenerating(true)
         try {
             await billingApi.batchGenerate({
                 start_date: batchDateFrom,
                 end_date: batchDateTo,
+                client_ids: batchClients === 'selected' ? batchClientIds : undefined,
             })
             toast.success('Batch invoices generated')
             setIsBatchInvoiceModalOpen(false)
+            setBatchDateFrom('')
+            setBatchDateTo('')
+            setBatchClients('all')
+            setBatchClientIds([])
+            setBatchClientSearch('')
             fetchInvoices()
         } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to generate invoices')
+            const message = err?.response?.data?.message
+                || (typeof err?.response?.data?.detail === 'string' ? err.response.data.detail : '')
+                || 'Failed to generate invoices'
+            toast.error(message)
         } finally {
             setBatchGenerating(false)
         }
+    }
+
+    const toggleBatchClient = (clientId: string) => {
+        setBatchClientIds(prev => (
+            prev.includes(clientId)
+                ? prev.filter(id => id !== clientId)
+                : [...prev, clientId]
+        ))
     }
 
     // Invoice actions
@@ -361,6 +547,9 @@ export default function BillingPage() {
         const actions: { label: string; icon: React.ReactElement; onClick: () => void }[] = [
             { label: 'View Invoice', icon: <Eye size={16} />, onClick: () => { handleViewInvoice(invoice) } }
         ]
+        if (!claimedInvoiceIds.has(invoice.id) && invoice.status !== 'cancelled') {
+            actions.push({ label: 'Create Claim', icon: <FileText size={16} />, onClick: () => { openCreateClaimModal(invoice) } })
+        }
         if (invoice.status !== 'paid') {
             actions.push({ label: 'Record Payment', icon: <CreditCard size={16} />, onClick: () => { setSelectedInvoice(invoice); setIsPaymentModalOpen(true) } })
         }
@@ -373,6 +562,9 @@ export default function BillingPage() {
         const actions = [
             { label: 'View Claim', icon: <Eye size={16} />, onClick: () => handleViewClaim(claim) }
         ]
+        if (claim.status === 'created') {
+            actions.push({ label: 'Submit Claim', icon: <CheckCircle size={16} />, onClick: () => handleSubmitClaim(claim) })
+        }
         if (claim.status === 'denied') {
             actions.push({ label: 'Resubmit Claim', icon: <ArrowClockwise size={16} />, onClick: () => handleResubmitClaim(claim) })
         }
@@ -405,7 +597,7 @@ export default function BillingPage() {
                             clientId: '',
                             invoiceDate: new Date().toISOString().split('T')[0],
                             dueDate: '',
-                            items: [{ service_code: '97153', description: '', units: 1, rate: 0, amount: 0 }]
+                            items: [createDefaultInvoiceItem()]
                         })
                         setIsCreateInvoiceOpen(true)
                     }}>
@@ -459,28 +651,28 @@ export default function BillingPage() {
             <div className="billing-tabs">
                 <button
                     className={`billing-tab ${activeTab === 'invoices' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('invoices')}
+                    onClick={() => handleTabChange('invoices')}
                 >
                     <Receipt size={18} weight="duotone" />
                     Invoices
                 </button>
                 <button
                     className={`billing-tab ${activeTab === 'claims' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('claims')}
+                    onClick={() => handleTabChange('claims')}
                 >
                     <FileText size={18} weight="duotone" />
                     Claims
                 </button>
                 <button
                     className={`billing-tab ${activeTab === 'payments' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('payments')}
+                    onClick={() => handleTabChange('payments')}
                 >
                     <CreditCard size={18} weight="duotone" />
                     Payments
                 </button>
                 <button
                     className={`billing-tab ${activeTab === 'aging' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('aging')}
+                    onClick={() => handleTabChange('aging')}
                 >
                     <ChartBar size={18} weight="duotone" />
                     Aging Reports
@@ -628,6 +820,15 @@ export default function BillingPage() {
                                 className="date-input"
                             />
                         </div>
+                        <button
+                            type="button"
+                            className="btn-primary"
+                            onClick={() => openCreateClaimModal()}
+                            disabled={claimableInvoices.length === 0}
+                        >
+                            <Plus size={18} weight="bold" />
+                            Create Claim
+                        </button>
                     </div>
 
                     <div className="card">
@@ -656,7 +857,7 @@ export default function BillingPage() {
                                                 {claim.status === 'paid' && <CheckCircle size={12} weight="bold" />}
                                                 {claim.status === 'denied' && <XCircle size={12} weight="bold" />}
                                                 {(claim.status === 'created' || claim.status === 'submitted') && <Clock size={12} weight="bold" />}
-                                                {claim.status.charAt(0).toUpperCase() + claim.status.slice(1)}
+                                                {getClaimStatusLabel(claim.status)}
                                             </span>
                                         </td>
                                         <td onClick={e => e.stopPropagation()}>
@@ -672,6 +873,15 @@ export default function BillingPage() {
                                 title="No claims found"
                                 description="Try adjusting your filters to see more results."
                             />
+                        )}
+                        {claims.length === 0 && claimableInvoices.length > 0 && (
+                            <div className="billing-empty-action">
+                                <p>Create a claim from an invoice to start tracking payer submissions and insurance payments.</p>
+                                <button type="button" className="btn-primary" onClick={() => openCreateClaimModal()}>
+                                    <Plus size={18} weight="bold" />
+                                    Create Your First Claim
+                                </button>
+                            </div>
                         )}
                     </div>
                 </>
@@ -1003,17 +1213,20 @@ export default function BillingPage() {
                                             value={item.service_code}
                                             onChange={(e) => {
                                                 const items = [...createInvoiceForm.items]
-                                                items[idx] = { ...items[idx], service_code: e.target.value }
+                                                const serviceCode = e.target.value
+                                                items[idx] = {
+                                                    ...items[idx],
+                                                    service_code: serviceCode,
+                                                    description: getBillingServiceDescription(serviceCode),
+                                                }
                                                 setCreateInvoiceForm(prev => ({ ...prev, items }))
                                             }}
                                             className="form-input-basic"
                                             style={{ padding: '0.375rem 0.5rem', fontSize: '0.85rem' }}
                                         >
-                                            <option value="97151">97151</option>
-                                            <option value="97153">97153</option>
-                                            <option value="97155">97155</option>
-                                            <option value="97156">97156</option>
-                                            <option value="97157">97157</option>
+                                            {BILLING_SERVICE_CATALOG.map(entry => (
+                                                <option key={entry.code} value={entry.code}>{entry.code}</option>
+                                            ))}
                                         </select>
                                     </td>
                                     <td>
@@ -1091,7 +1304,7 @@ export default function BillingPage() {
                         className="btn-ghost"
                         onClick={() => setCreateInvoiceForm(prev => ({
                             ...prev,
-                            items: [...prev.items, { service_code: '97153', description: '', units: 1, rate: 0, amount: 0 }]
+                            items: [...prev.items, createDefaultInvoiceItem()]
                         }))}
                         style={{ fontSize: '0.85rem', color: 'var(--color-primary)', marginBottom: '1rem' }}
                     >
@@ -1151,10 +1364,17 @@ export default function BillingPage() {
                             <div className="claim-info-row">
                                 <span className="claim-info-label">Status:</span>
                                 <span className={`status-badge status-${selectedClaim.status}`}>
-                                    {selectedClaim.status.charAt(0).toUpperCase() + selectedClaim.status.slice(1)}
+                                    {getClaimStatusLabel(selectedClaim.status)}
                                 </span>
                             </div>
                         </div>
+
+                        {selectedClaim.status === 'created' && (
+                            <div className="claim-status-note">
+                                <strong>Internal claim only.</strong>
+                                <span>This claim is saved in Sirena but has not been sent to a clearinghouse or payer yet.</span>
+                            </div>
+                        )}
 
                         {selectedClaim.status === 'denied' && selectedClaim.denial_reason && (
                             <div className="denial-reason-box">
@@ -1195,11 +1415,23 @@ export default function BillingPage() {
                             >
                                 Close
                             </button>
+                            {selectedClaim.status === 'created' && (
+                                <button
+                                    type="button"
+                                    className="btn-primary"
+                                    onClick={() => handleSubmitClaim(selectedClaim)}
+                                    disabled={isSaving}
+                                >
+                                    <CheckCircle size={18} />
+                                    Submit Claim
+                                </button>
+                            )}
                             {selectedClaim.status === 'denied' && (
                                 <button
                                     type="button"
                                     className="btn-primary"
                                     onClick={() => handleResubmitClaim(selectedClaim)}
+                                    disabled={isSaving}
                                 >
                                     <ArrowClockwise size={18} />
                                     Resubmit Claim
@@ -1295,18 +1527,124 @@ export default function BillingPage() {
                 )}
             </Modal>
 
+            <Modal
+                isOpen={isCreateClaimModalOpen}
+                onClose={() => {
+                    setIsCreateClaimModalOpen(false)
+                    resetClaimForm()
+                }}
+                title="Create Claim"
+                size="sm"
+            >
+                <form
+                    className="payment-form"
+                    onSubmit={(e) => {
+                        e.preventDefault()
+                        handleCreateClaim()
+                    }}
+                >
+                    <div className="form-group">
+                        <label className="form-label">Invoice *</label>
+                        <select
+                            value={claimFormData.invoiceId}
+                            onChange={(e) => handleClaimInvoiceChange(e.target.value)}
+                            className="form-input-basic"
+                            required
+                        >
+                            <option value="">Select invoice</option>
+                            {claimableInvoices.map(invoice => (
+                                <option key={invoice.id} value={invoice.id}>
+                                    {invoice.invoice_number} · {getClientName(invoice.client_id)} · {formatCurrency(invoice.total_amount)}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {claimFormData.invoiceId && (
+                        <div className="payment-invoice-info">
+                            <p>Client: <strong>{getClientName(invoices.find(invoice => invoice.id === claimFormData.invoiceId)?.client_id || '')}</strong></p>
+                            <p>Invoice Amount: <strong>{formatCurrency(invoices.find(invoice => invoice.id === claimFormData.invoiceId)?.total_amount)}</strong></p>
+                        </div>
+                    )}
+
+                    <div className="claim-status-note">
+                        <strong>Creates an internal claim record.</strong>
+                        <span>You can submit it afterward to mark it as sent. Clearinghouse delivery is not automated here yet.</span>
+                    </div>
+
+                    <div className="form-group">
+                        <label className="form-label">Payer Name *</label>
+                        <input
+                            type="text"
+                            value={claimFormData.payerName}
+                            onChange={(e) => setClaimFormData(prev => ({ ...prev, payerName: e.target.value }))}
+                            className="form-input-basic"
+                            placeholder="Insurance payer name"
+                            required
+                        />
+                    </div>
+
+                    <div className="form-group">
+                        <label className="form-label">Payer ID</label>
+                        <input
+                            type="text"
+                            value={claimFormData.payerId}
+                            onChange={(e) => setClaimFormData(prev => ({ ...prev, payerId: e.target.value }))}
+                            className="form-input-basic"
+                            placeholder="Optional payer identifier"
+                        />
+                    </div>
+
+                    <div className="payment-form-actions">
+                        <button
+                            type="button"
+                            className="btn-secondary"
+                            onClick={() => {
+                                setIsCreateClaimModalOpen(false)
+                                resetClaimForm()
+                            }}
+                        >
+                            Cancel
+                        </button>
+                        <button type="submit" className="btn-primary" disabled={isSaving || claimableInvoices.length === 0}>
+                            {isSaving ? (
+                                <><span className="spinner-sm" /> Saving...</>
+                            ) : (
+                                <><FileText size={16} weight="bold" /> Create Claim</>
+                            )}
+                        </button>
+                    </div>
+                </form>
+            </Modal>
+
             {/* Batch Invoice Generation Modal */}
             <Modal
                 isOpen={isBatchInvoiceModalOpen}
-                onClose={() => setIsBatchInvoiceModalOpen(false)}
+                onClose={() => {
+                    setIsBatchInvoiceModalOpen(false)
+                    setBatchDateFrom('')
+                    setBatchDateTo('')
+                    setBatchClients('all')
+                    setBatchClientIds([])
+                    setBatchClientSearch('')
+                }}
                 title="Generate Batch Invoices"
                 size="lg"
             >
                 <div className="batch-invoice-content">
-                    <p className="batch-description">
-                        Create invoices for all billable sessions within a date range.
-                        Sessions must have completed notes to be invoiced.
-                    </p>
+                    <div className="batch-modal-hero">
+                        <p className="batch-description">
+                            Create invoices from attended appointments in the selected date range. Batch invoicing uses each appointment&apos;s CPT code and units, then resolves the rate from your existing billing history. The batch is blocked if service codes, units, or rates are missing.
+                        </p>
+                        <div className="batch-preview-box">
+                            <strong>Scope</strong>
+                            <p>
+                                {batchClients === 'all'
+                                    ? 'All clients with attended appointments will be included.'
+                                    : `${batchClientIds.length} selected client${batchClientIds.length === 1 ? '' : 's'} will be included.`}
+                            </p>
+                        </div>
+                    </div>
 
                     <div className="form-row-2">
                         <div className="form-group">
@@ -1331,33 +1669,82 @@ export default function BillingPage() {
 
                     <div className="form-group">
                         <label className="form-label">Clients</label>
-                        <div className="radio-group">
-                            <label className="radio-label">
+                        <div className="batch-scope-grid">
+                            <label className={`radio-label batch-scope-card ${batchClients === 'all' ? 'selected' : ''}`}>
                                 <input
                                     type="radio"
                                     name="batchClients"
                                     checked={batchClients === 'all'}
                                     onChange={() => setBatchClients('all')}
                                 />
-                                All clients with billable sessions
+                                <span>
+                                    <strong>All clients</strong>
+                                    <small>Use every client with attended appointments in the selected date range.</small>
+                                </span>
                             </label>
-                            <label className="radio-label">
+                            <label className={`radio-label batch-scope-card ${batchClients === 'selected' ? 'selected' : ''}`}>
                                 <input
                                     type="radio"
                                     name="batchClients"
                                     checked={batchClients === 'selected'}
                                     onChange={() => setBatchClients('selected')}
                                 />
-                                Selected clients only
+                                <span>
+                                    <strong>Selected clients only</strong>
+                                    <small>Pick a smaller client set when you need a more controlled batch run.</small>
+                                </span>
                             </label>
                         </div>
                     </div>
+
+                    {batchClients === 'selected' && (
+                        <div className="batch-client-picker">
+                            <div className="search-input">
+                                <MagnifyingGlass size={18} className="search-icon" />
+                                <input
+                                    type="text"
+                                    placeholder="Search clients..."
+                                    value={batchClientSearch}
+                                    onChange={(e) => setBatchClientSearch(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="batch-client-list">
+                                {filteredBatchClients.map(client => {
+                                    const checked = batchClientIds.includes(client.id)
+                                    return (
+                                        <label key={client.id} className={`batch-client-option ${checked ? 'selected' : ''}`}>
+                                            <input
+                                                type="checkbox"
+                                                checked={checked}
+                                                onChange={() => toggleBatchClient(client.id)}
+                                            />
+                                            <span className="batch-client-copy">
+                                                <strong>{client.first_name} {client.last_name}</strong>
+                                                <small>{client.email || client.insurance_primary_name || 'No additional client info'}</small>
+                                            </span>
+                                        </label>
+                                    )
+                                })}
+                                {filteredBatchClients.length === 0 && (
+                                    <div className="batch-client-empty">No clients match your search.</div>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="form-actions">
                         <button
                             type="button"
                             className="btn-secondary"
-                            onClick={() => setIsBatchInvoiceModalOpen(false)}
+                            onClick={() => {
+                                setIsBatchInvoiceModalOpen(false)
+                                setBatchDateFrom('')
+                                setBatchDateTo('')
+                                setBatchClients('all')
+                                setBatchClientIds([])
+                                setBatchClientSearch('')
+                            }}
                         >
                             Cancel
                         </button>
@@ -1382,3 +1769,6 @@ export default function BillingPage() {
         </DashboardLayout>
     )
 }
+
+
+

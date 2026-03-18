@@ -61,6 +61,29 @@ export interface MissingNotesReport {
     }>
 }
 
+export interface PaymentsReport {
+    total_transactions: number
+    total_collected: number
+    total_refunded: number
+    net_collected: number
+    method_breakdown: Array<{
+        payment_method: string
+        total: number
+        transactions: number
+    }>
+    transactions: Array<{
+        id: string
+        invoice_id: string
+        invoice_number: string
+        client_name: string
+        amount: number
+        payment_type: string
+        payment_method: string
+        payment_date: string
+        reference_number: string
+    }>
+}
+
 export const reportsApi = {
     getSessionSummary: async (params?: {
         start_date?: string
@@ -84,6 +107,14 @@ export const reportsApi = {
         end_date?: string
     }): Promise<BillingSummaryReport> => {
         const { data } = await apiClient.get<BillingSummaryReport>('/reports/billing-summary/', { params })
+        return data
+    },
+
+    getPaymentsReport: async (params?: {
+        start_date?: string
+        end_date?: string
+    }): Promise<PaymentsReport> => {
+        const { data } = await apiClient.get<PaymentsReport>('/reports/payments/', { params })
         return data
     },
 

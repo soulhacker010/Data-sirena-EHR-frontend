@@ -89,38 +89,48 @@ export default function MissingNotesReportPage() {
                         <Warning size={28} weight="duotone" />
                         Missing Notes Report
                     </h1>
+                    <p className="page-subtitle">Review overdue notes, prioritize urgent items, and jump straight into note creation</p>
                 </div>
                 <button className="btn-secondary" onClick={handleExportCSV}>
                     <Download size={18} weight="bold" /> Export CSV
                 </button>
             </div>
 
-            {/* Summary Stats */}
             <div className="report-stats-grid">
                 <div className="report-stat-card warning">
-                    <PencilSimple size={24} weight="duotone" className="icon-warning" />
-                    <p className="stat-value">{totalMissing}</p>
-                    <p className="stat-label">Missing Notes</p>
+                    <div className="report-stat-icon orange">
+                        <PencilSimple size={20} weight="duotone" />
+                    </div>
+                    <div className="report-stat-content">
+                        <p className="stat-value">{totalMissing}</p>
+                        <p className="stat-label">Missing Notes</p>
+                    </div>
                 </div>
                 <div className="report-stat-card danger">
-                    <Warning size={24} weight="fill" className="icon-error" />
-                    <p className="stat-value">{critical}</p>
-                    <p className="stat-label">Critical (5+ days)</p>
+                    <div className="report-stat-icon orange">
+                        <Warning size={20} weight="fill" />
+                    </div>
+                    <div className="report-stat-content">
+                        <p className="stat-value">{critical}</p>
+                        <p className="stat-label">Critical (5+ days)</p>
+                    </div>
                 </div>
                 <div className="report-stat-card">
-                    <Clock size={24} weight="duotone" className="icon-primary" />
-                    <p className="stat-value">{avgDaysOverdue}</p>
-                    <p className="stat-label">Avg Days Overdue</p>
+                    <div className="report-stat-icon purple">
+                        <Clock size={20} weight="duotone" />
+                    </div>
+                    <div className="report-stat-content">
+                        <p className="stat-value">{avgDaysOverdue}</p>
+                        <p className="stat-label">Avg Days Overdue</p>
+                    </div>
                 </div>
             </div>
 
-            {/* Search */}
             <div className="filter-bar">
-                <div className="search-input-wrapper">
+                <div className="search-input">
                     <User size={18} className="search-icon" />
                     <input
                         type="text"
-                        className="search-input"
                         placeholder="Search by client or provider..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
@@ -128,7 +138,6 @@ export default function MissingNotesReportPage() {
                 </div>
             </div>
 
-            {/* Table */}
             <div className="card">
                 <div className="card-body p-0">
                     {filtered.length > 0 ? (
@@ -149,7 +158,7 @@ export default function MissingNotesReportPage() {
                                         <td className="font-medium">{n.client_name}</td>
                                         <td>{n.provider_name}</td>
                                         <td>
-                                            <div className="flex items-center gap-1">
+                                            <div className="report-inline-meta">
                                                 <CalendarBlank size={14} />
                                                 {formatDate(n.session_date)}
                                             </div>

@@ -63,6 +63,15 @@ function formatTime(iso: string) {
     return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
 
+function formatCurrency(amount: number) {
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+    }).format(amount)
+}
+
 // Appointment avatar colors
 const avatarColors = [
     'bg-teal-100 text-teal-700',
@@ -240,13 +249,16 @@ export default function DashboardPage() {
                                         <p className="dashboard-billing-item-value">${stats.revenue_mtd.toLocaleString()}</p>
                                     </div>
                                 </div>
-                                <div className="dashboard-billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
+                                <div className="dashboard-billing-item" onClick={() => navigate('/billing')} style={{ cursor: 'pointer' }}>
                                     <div className="dashboard-billing-item-icon yellow">
                                         <Receipt size={20} weight="fill" />
                                     </div>
                                     <div className="dashboard-billing-item-content">
-                                        <p className="dashboard-billing-item-label">Invoices Pending</p>
-                                        <p className="dashboard-billing-item-value">{billing.invoices_pending}</p>
+                                        <p className="dashboard-billing-item-label">Outstanding Balance</p>
+                                        <p className="dashboard-billing-item-value">{formatCurrency(billing.outstanding_balance)}</p>
+                                        <p className="dashboard-billing-item-meta">
+                                            {billing.invoices_pending} open invoice{billing.invoices_pending === 1 ? '' : 's'}
+                                        </p>
                                     </div>
                                 </div>
                                 <div className="dashboard-billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
@@ -254,7 +266,7 @@ export default function DashboardPage() {
                                         <CheckCircle size={20} weight="fill" />
                                     </div>
                                     <div className="dashboard-billing-item-content">
-                                        <p className="dashboard-billing-item-label">Claims Submitted</p>
+                                        <p className="dashboard-billing-item-label">Claims Sent</p>
                                         <p className="dashboard-billing-item-value">{billing.claims_submitted}</p>
                                     </div>
                                 </div>

@@ -123,6 +123,7 @@ export default function NotificationsPage() {
             case 'auth_expiring':
                 return 'authorization'
             case 'claim_denied':
+            case 'payment_received':
                 return 'billing'
             case 'appointment_reminder':
                 return 'appointment'

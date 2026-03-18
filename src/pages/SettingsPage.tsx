@@ -5,12 +5,9 @@ import { PageSkeleton } from '../components/ui'
 import { useAuth } from '../context'
 import { authApi, settingsApi } from '../api'
 import { passwordChangeSchema } from '../lib/validationSchemas'
-import type { OrganizationSettings } from '../types'
 import {
     User,
     Bell,
-    Moon,
-    Sun,
     Buildings,
     Lock,
     EnvelopeSimple,
@@ -30,7 +27,6 @@ const settingsSections: SettingsSection[] = [
     { id: 'practice', label: 'Practice Info', icon: Buildings },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'security', label: 'Security', icon: Lock },
-    { id: 'appearance', label: 'Appearance', icon: Moon },
 ]
 
 export default function SettingsPage() {
@@ -39,7 +35,6 @@ export default function SettingsPage() {
     const [saved, setSaved] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
-    const [theme, setTheme] = useState<'light' | 'dark'>('light')
 
     // Profile state — from auth context
     const [profile, setProfile] = useState({
@@ -233,7 +228,7 @@ export default function SettingsPage() {
                                     <label className="form-label">First Name</label>
                                     <input
                                         type="text"
-                                        className="form-control"
+                                        className="form-input-basic"
                                         value={profile.firstName}
                                         disabled
                                     />
@@ -242,7 +237,7 @@ export default function SettingsPage() {
                                     <label className="form-label">Last Name</label>
                                     <input
                                         type="text"
-                                        className="form-control"
+                                        className="form-input-basic"
                                         value={profile.lastName}
                                         disabled
                                     />
@@ -253,7 +248,7 @@ export default function SettingsPage() {
                                     </label>
                                     <input
                                         type="email"
-                                        className="form-control"
+                                        className="form-input-basic"
                                         value={profile.email}
                                         disabled
                                     />
@@ -262,7 +257,7 @@ export default function SettingsPage() {
                                     <label className="form-label">Role</label>
                                     <input
                                         type="text"
-                                        className="form-control"
+                                        className="form-input-basic"
                                         value={profile.role.charAt(0).toUpperCase() + profile.role.slice(1).replace('_', ' ')}
                                         disabled
                                     />
@@ -284,7 +279,7 @@ export default function SettingsPage() {
                                     </label>
                                     <input
                                         type="text"
-                                        className="form-control"
+                                        className="form-input-basic"
                                         value={practice.name}
                                         onChange={(e) => setPractice(prev => ({ ...prev, name: e.target.value }))}
                                     />
@@ -294,7 +289,7 @@ export default function SettingsPage() {
                                         <MapPin size={16} /> Address
                                     </label>
                                     <textarea
-                                        className="form-control"
+                                        className="form-input-basic"
                                         rows={2}
                                         value={practice.address}
                                         onChange={(e) => setPractice(prev => ({ ...prev, address: e.target.value }))}
@@ -306,7 +301,7 @@ export default function SettingsPage() {
                                     </label>
                                     <input
                                         type="text"
-                                        className="form-control"
+                                        className="form-input-basic"
                                         value={practice.contact_phone}
                                         onChange={(e) => setPractice(prev => ({ ...prev, contact_phone: e.target.value }))}
                                     />
@@ -317,7 +312,7 @@ export default function SettingsPage() {
                                     </label>
                                     <input
                                         type="email"
-                                        className="form-control"
+                                        className="form-input-basic"
                                         value={practice.contact_email}
                                         onChange={(e) => setPractice(prev => ({ ...prev, contact_email: e.target.value }))}
                                     />
@@ -326,7 +321,7 @@ export default function SettingsPage() {
                                     <label className="form-label">Tax ID</label>
                                     <input
                                         type="text"
-                                        className="form-control"
+                                        className="form-input-basic"
                                         value={practice.tax_id}
                                         onChange={(e) => setPractice(prev => ({ ...prev, tax_id: e.target.value }))}
                                     />
@@ -395,7 +390,7 @@ export default function SettingsPage() {
                                     <label className="form-label">Current Password</label>
                                     <input
                                         type="password"
-                                        className={`form-control ${passwordErrors.current_password || passwordErrors.currentPassword ? 'error' : ''}`}
+                                        className={`form-input-basic ${passwordErrors.current_password || passwordErrors.currentPassword ? 'error' : ''}`}
                                         value={passwordData.currentPassword}
                                         onChange={(e) => handlePasswordFieldChange('currentPassword', e.target.value)}
                                         placeholder="Enter current password"
@@ -408,7 +403,7 @@ export default function SettingsPage() {
                                     <label className="form-label">New Password</label>
                                     <input
                                         type="password"
-                                        className={`form-control ${passwordErrors.new_password || passwordErrors.newPassword ? 'error' : ''}`}
+                                        className={`form-input-basic ${passwordErrors.new_password || passwordErrors.newPassword ? 'error' : ''}`}
                                         value={passwordData.newPassword}
                                         onChange={(e) => handlePasswordFieldChange('newPassword', e.target.value)}
                                         placeholder="Enter new password"
@@ -421,7 +416,7 @@ export default function SettingsPage() {
                                     <label className="form-label">Confirm New Password</label>
                                     <input
                                         type="password"
-                                        className={`form-control ${passwordErrors.confirm_password || passwordErrors.confirmPassword ? 'error' : ''}`}
+                                        className={`form-input-basic ${passwordErrors.confirm_password || passwordErrors.confirmPassword ? 'error' : ''}`}
                                         value={passwordData.confirmPassword}
                                         onChange={(e) => handlePasswordFieldChange('confirmPassword', e.target.value)}
                                         placeholder="Confirm new password"
@@ -440,30 +435,6 @@ export default function SettingsPage() {
                         </div>
                     )}
 
-                    {/* ─── Appearance Section ──────────────────────── */}
-                    {activeSection === 'appearance' && (
-                        <div className="settings-section">
-                            <h2 className="settings-section-title">Appearance</h2>
-                            <p className="settings-section-desc">Customize your display preferences.</p>
-
-                            <div className="theme-toggle">
-                                <button
-                                    className={`theme-option ${theme === 'light' ? 'active' : ''}`}
-                                    onClick={() => setTheme('light')}
-                                >
-                                    <Sun size={24} weight={theme === 'light' ? 'fill' : 'regular'} />
-                                    <span>Light</span>
-                                </button>
-                                <button
-                                    className={`theme-option ${theme === 'dark' ? 'active' : ''}`}
-                                    onClick={() => setTheme('dark')}
-                                >
-                                    <Moon size={24} weight={theme === 'dark' ? 'fill' : 'regular'} />
-                                    <span>Dark</span>
-                                </button>
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
         </DashboardLayout>

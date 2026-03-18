@@ -47,7 +47,7 @@ const formatDate = (date: string | undefined) => {
 const canDeleteNote = (note: SessionNote) => note.status === 'draft'
 
 export default function SessionNotesPage() {
-    const [_searchParams] = useSearchParams()
+    const [searchParams, setSearchParams] = useSearchParams()
     const { user } = useAuth()
     const [isLoading, setIsLoading] = useState(true)
     const [notes, setNotes] = useState<SessionNote[]>([])
@@ -79,6 +79,7 @@ export default function SessionNotesPage() {
     const [isSaving, setIsSaving] = useState(false)
     const [lastSaved, setLastSaved] = useState<Date | null>(null)
     const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const processedRouteActionRef = useRef('')
 
     // Signature canvas ref
     const signatureCanvasRef = useRef<HTMLCanvasElement>(null)
@@ -194,12 +195,19 @@ export default function SessionNotesPage() {
     }, [formData, isNoteEditorOpen, selectedNote])
 
     // Handlers
-    const handleNewNote = () => {
+    const clearRouteActionParams = useCallback(() => {
+        const nextParams = new URLSearchParams(searchParams)
+        nextParams.delete('new')
+        nextParams.delete('note')
+        setSearchParams(nextParams, { replace: true })
+    }, [searchParams, setSearchParams])
+
+    const openNewNote = useCallback((prefillClientId = '') => {
         setSelectedNote(null)
         setLastSaved(null)
         setFormData({
             templateId: 'blank',
-            clientId: '',
+            clientId: prefillClientId,
             sessionDate: new Date().toISOString().split('T')[0],
             cptCode: '97153',
             objectives: '',
@@ -208,6 +216,10 @@ export default function SessionNotesPage() {
             notes: ''
         })
         setIsNoteEditorOpen(true)
+    }, [])
+
+    const handleNewNote = () => {
+        openNewNote()
     }
 
     const loadNoteDetail = async (note: SessionNote) => {
@@ -223,6 +235,49 @@ export default function SessionNotesPage() {
             setIsLoadingNoteDetail(false)
         }
     }
+
+    useEffect(() => {
+        if (isLoading) return
+
+        const clientIdParam = searchParams.get('client') || ''
+        const noteIdParam = searchParams.get('note')
+        const wantsNewNote = searchParams.get('new') === '1'
+        const routeActionKey = `${clientIdParam}:${noteIdParam || ''}:${wantsNewNote ? 'new' : ''}`
+
+        if (clientIdParam && clientFilter !== clientIdParam) {
+            setClientFilter(clientIdParam)
+        }
+
+        if ((!noteIdParam && !wantsNewNote) || processedRouteActionRef.current === routeActionKey) {
+            return
+        }
+
+        processedRouteActionRef.current = routeActionKey
+
+        if (wantsNewNote) {
+            openNewNote(clientIdParam)
+            clearRouteActionParams()
+            return
+        }
+
+        if (!noteIdParam) return
+
+        const openRoutedNote = async () => {
+            setIsLoadingNoteDetail(true)
+            try {
+                const fullNote = await notesApi.getById(noteIdParam)
+                setSelectedNote(fullNote)
+                setIsViewModalOpen(true)
+            } catch (err: any) {
+                toast.error(getApiErrorMessage(err, 'Failed to load note details'))
+            } finally {
+                setIsLoadingNoteDetail(false)
+                clearRouteActionParams()
+            }
+        }
+
+        void openRoutedNote()
+    }, [clearRouteActionParams, clientFilter, isLoading, openNewNote, searchParams])
 
     const handleViewNote = async (note: SessionNote) => {
         const fullNote = await loadNoteDetail(note)

@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { Modal, EditClientModal, EmptyState, PageSkeleton, ConfirmDialog } from '../components/ui'
+import StripePaymentForm from '../components/billing/StripePaymentForm'
 import { clientsApi, billingApi, notesApi } from '../api'
 import type { ClientDetail, Authorization, ClientDocument, Invoice, Payment, Claim, SessionNote } from '../types'
 import {
@@ -28,6 +29,8 @@ import {
     FileDoc,
     Image,
     Receipt,
+    CreditCard,
+    CheckCircle,
     ClipboardText,
     Eraser
 } from '@phosphor-icons/react'
@@ -57,8 +60,8 @@ const formatDate = (date: string) => {
 }
 
 // Format currency
-const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
+const formatCurrency = (amount: number | string | null | undefined) => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(Number(amount) || 0)
 }
 
 // Get file icon
@@ -76,6 +79,10 @@ const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+const openExternalDocument = (url: string) => {
+    window.open(url, '_blank', 'noopener,noreferrer')
 }
 
 export default function ClientDetailPage() {
@@ -104,6 +111,8 @@ export default function ClientDetailPage() {
     const [paymentAmount, setPaymentAmount] = useState('')
     const [paymentMethod, setPaymentMethod] = useState('credit_card')
     const [paymentReference, setPaymentReference] = useState('')
+    const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null)
+    const [isStripeLoading, setIsStripeLoading] = useState(false)
 
     // Post payment form state
     const [postInsurancePaid, setPostInsurancePaid] = useState('')
@@ -193,7 +202,13 @@ export default function ClientDetailPage() {
         setIsEditModalOpen(true)
     }
 
-    // Handle record payment
+    const resetPaymentForm = () => {
+        setPaymentAmount('')
+        setPaymentMethod('credit_card')
+        setPaymentReference('')
+        setStripeClientSecret(null)
+    }
+
     const handleRecordPayment = async () => {
         if (isSaving) return
         if (!paymentAmount || !id) return
@@ -204,9 +219,13 @@ export default function ClientDetailPage() {
         }
 
         // We need an invoice_id; in this flow we pick the first unpaid invoice
-        const unpaid = invoices.find(inv => inv.status !== 'paid')
+        const unpaid = invoices.find(inv => inv.status !== 'paid' && Number(inv.balance || 0) > 0)
         if (!unpaid) {
             toast.error('No outstanding invoice found')
+            return
+        }
+        if (amount > Number(unpaid.balance || 0)) {
+            toast.error(`Payment exceeds balance due of ${formatCurrency(unpaid.balance)}`)
             return
         }
 
@@ -215,19 +234,51 @@ export default function ClientDetailPage() {
             await billingApi.recordPayment({
                 invoice_id: unpaid.id,
                 amount,
-                payment_method: paymentMethod as any,
+                payment_method: paymentMethod as 'credit_card' | 'eft' | 'check' | 'cash' | 'other',
                 notes: paymentReference || undefined,
             })
             toast.success(`Payment of ${formatCurrency(amount)} recorded`)
             setIsPaymentModalOpen(false)
-            setPaymentAmount('')
-            setPaymentReference('')
+            resetPaymentForm()
             refreshBilling()
         } catch (err: any) {
             toast.error(err?.response?.data?.detail || 'Failed to record payment')
         } finally {
             setIsSaving(false)
         }
+    }
+
+    const handleStripePayment = async () => {
+        const unpaid = invoices.find(inv => inv.status !== 'paid' && Number(inv.balance || 0) > 0)
+        if (!unpaid || !paymentAmount) return
+        const amount = parseFloat(paymentAmount)
+        if (isNaN(amount) || amount <= 0) {
+            toast.error('Please enter a valid amount')
+            return
+        }
+        if (amount > Number(unpaid.balance || 0)) {
+            toast.error(`Payment exceeds balance due of ${formatCurrency(unpaid.balance)}`)
+            return
+        }
+        setIsStripeLoading(true)
+        try {
+            const { client_secret } = await billingApi.createStripePayment({
+                invoice_id: unpaid.id,
+                amount,
+            })
+            setStripeClientSecret(client_secret)
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message || 'Failed to initialize payment')
+        } finally {
+            setIsStripeLoading(false)
+        }
+    }
+
+    const handleStripeSuccess = async () => {
+        toast.success('Payment successful!')
+        setIsPaymentModalOpen(false)
+        resetPaymentForm()
+        await refreshBilling()
     }
 
     // Handle post payment to claim
@@ -311,6 +362,28 @@ export default function ClientDetailPage() {
         }
     }
 
+    const handlePreviewDocument = async (doc: ClientDocument) => {
+        if (!id) return
+
+        try {
+            const { url } = await clientsApi.getDocumentAccessUrl(id, doc.id)
+            openExternalDocument(url)
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || err?.response?.data?.file || 'Document preview is unavailable')
+        }
+    }
+
+    const handleDownloadDocument = async (doc: ClientDocument) => {
+        if (!id) return
+
+        try {
+            const { url } = await clientsApi.getDocumentAccessUrl(id, doc.id, true)
+            openExternalDocument(url)
+        } catch (err: any) {
+            toast.error(err?.response?.data?.detail || err?.response?.data?.file || 'Document download is unavailable')
+        }
+    }
+
     if (isLoading || !client) {
         return (
             <DashboardLayout>
@@ -320,7 +393,12 @@ export default function ClientDetailPage() {
     }
 
     const documents = client.documents || []
-    const balance = invoices.reduce((sum, inv) => sum + inv.balance, 0)
+    const balance = invoices
+        .filter(inv => inv.status !== 'paid')
+        .reduce((sum, inv) => sum + parseFloat(String(inv.balance || 0)), 0)
+    const selectedOutstandingInvoice = invoices.find(
+        inv => inv.status !== 'paid' && Number(inv.balance || 0) > 0
+    ) || null
 
     return (
         <DashboardLayout>
@@ -634,7 +712,7 @@ export default function ClientDetailPage() {
                             <h2 className="card-title">Session Notes</h2>
                             <button
                                 className="btn-primary btn-sm"
-                                onClick={() => navigate(`/notes/new?client=${id}`)}
+                                onClick={() => navigate(`/notes?client=${id}&new=1`)}
                             >
                                 <Plus size={16} weight="bold" /> New Note
                             </button>
@@ -652,7 +730,11 @@ export default function ClientDetailPage() {
                                     </thead>
                                     <tbody>
                                         {clientNotes.map(note => (
-                                            <tr key={note.id}>
+                                            <tr
+                                                key={note.id}
+                                                className="clickable-row"
+                                                onClick={() => navigate(`/notes?client=${id}&note=${note.id}`)}
+                                            >
                                                 <td>{formatDate(note.session_date || note.created_at)}</td>
                                                 <td><span className="cpt-code">{note.service_code || '—'}</span></td>
                                                 <td>{note.provider_name || '—'}</td>
@@ -698,17 +780,10 @@ export default function ClientDetailPage() {
                                                 <p className="document-meta">{formatFileSize(doc.file_size)} · {formatDate(doc.created_at)}</p>
                                             </div>
                                             <div className="document-actions">
-                                                <button className="btn-icon-sm" title="Preview" onClick={() => doc.file_path && window.open(doc.file_path, '_blank')}>
+                                                <button className="btn-icon-sm" title="Preview" onClick={() => handlePreviewDocument(doc)}>
                                                     <Eye size={16} />
                                                 </button>
-                                                <button className="btn-icon-sm" title="Download" onClick={() => {
-                                                    if (!doc.file_path) return
-                                                    const a = document.createElement('a')
-                                                    a.href = doc.file_path
-                                                    a.download = doc.file_name
-                                                    a.target = '_blank'
-                                                    a.click()
-                                                }}>
+                                                <button className="btn-icon-sm" title="Download" onClick={() => handleDownloadDocument(doc)}>
                                                     <DownloadSimple size={16} />
                                                 </button>
                                                 <button className="btn-icon-sm danger" title="Delete" onClick={() => {
@@ -742,7 +817,11 @@ export default function ClientDetailPage() {
                                     <p className="balance-label">Current Balance</p>
                                     <p className="balance-value">{formatCurrency(balance)}</p>
                                 </div>
-                                <button className="btn-primary" onClick={() => setIsPaymentModalOpen(true)}>
+                                <button
+                                    className="btn-primary"
+                                    onClick={() => setIsPaymentModalOpen(true)}
+                                    disabled={!selectedOutstandingInvoice}
+                                >
                                     <Receipt size={18} weight="bold" /> Record Payment
                                 </button>
                             </div>
@@ -975,67 +1054,111 @@ export default function ClientDetailPage() {
             {/* Record Payment Modal */}
             <Modal
                 isOpen={isPaymentModalOpen}
-                onClose={() => setIsPaymentModalOpen(false)}
+                onClose={() => {
+                    setIsPaymentModalOpen(false)
+                    resetPaymentForm()
+                }}
                 title="Record Payment"
-                size="md"
+                size="sm"
             >
-                <div className="payment-form">
-                    <div className="payment-info">
-                        <p className="payment-info-label">Client</p>
-                        <p className="payment-info-value">{client.first_name} {client.last_name}</p>
-                    </div>
-                    <div className="payment-info">
-                        <p className="payment-info-label">Current Balance</p>
-                        <p className="payment-info-value balance">{formatCurrency(balance)}</p>
-                    </div>
-                    <div className="form-row">
+                {stripeClientSecret && selectedOutstandingInvoice ? (
+                    <StripePaymentForm
+                        clientSecret={stripeClientSecret}
+                        amount={parseFloat(paymentAmount)}
+                        invoiceNumber={selectedOutstandingInvoice.invoice_number}
+                        onSuccess={handleStripeSuccess}
+                        onCancel={() => setStripeClientSecret(null)}
+                    />
+                ) : (
+                    <form
+                        className="payment-form"
+                        onSubmit={(e) => {
+                            e.preventDefault()
+                            if (paymentMethod === 'credit_card') {
+                                handleStripePayment()
+                                return
+                            }
+                            handleRecordPayment()
+                        }}
+                    >
+                        {selectedOutstandingInvoice && (
+                            <div className="payment-invoice-info">
+                                <p>Invoice: <strong>{selectedOutstandingInvoice.invoice_number}</strong></p>
+                                <p>Balance Due: <strong>{formatCurrency(selectedOutstandingInvoice.balance)}</strong></p>
+                            </div>
+                        )}
+
                         <div className="form-group">
-                            <label className="form-label">Payment Amount</label>
+                            <label className="form-label">Amount *</label>
                             <input
                                 type="number"
-                                className="form-input"
-                                placeholder="0.00"
                                 step="0.01"
                                 value={paymentAmount}
                                 onChange={(e) => setPaymentAmount(e.target.value)}
+                                className="form-input-basic"
+                                placeholder="0.00"
+                                max={selectedOutstandingInvoice ? Number(selectedOutstandingInvoice.balance || 0) : undefined}
+                                required
                             />
                         </div>
-                    </div>
-                    <div className="form-group">
-                        <label className="form-label">Payment Method</label>
-                        <select
-                            className="form-select"
-                            value={paymentMethod}
-                            onChange={(e) => setPaymentMethod(e.target.value)}
-                        >
-                            <option value="credit_card">Credit Card</option>
-                            <option value="eft">EFT/ACH</option>
-                            <option value="check">Check</option>
-                            <option value="cash">Cash</option>
-                            <option value="other">Other</option>
-                        </select>
-                    </div>
-                    <div className="form-group">
-                        <label className="form-label">Reference / Check Number</label>
-                        <input
-                            type="text"
-                            className="form-input"
-                            placeholder="e.g., Check #1234 or EOB-12345"
-                            value={paymentReference}
-                            onChange={(e) => setPaymentReference(e.target.value)}
-                        />
-                    </div>
-                    <div className="form-actions">
-                        <button className="btn-secondary" onClick={() => setIsPaymentModalOpen(false)}>Cancel</button>
-                        <button
-                            className="btn-primary"
-                            onClick={handleRecordPayment}
-                            disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
-                        >
-                            Record Payment
-                        </button>
-                    </div>
-                </div>
+
+                        <div className="form-group">
+                            <label className="form-label">Payment Method</label>
+                            <select
+                                value={paymentMethod}
+                                onChange={(e) => setPaymentMethod(e.target.value)}
+                                className="form-input-basic"
+                            >
+                                <option value="credit_card">Credit Card (Stripe)</option>
+                                <option value="eft">EFT Transfer</option>
+                                <option value="check">Check</option>
+                                <option value="cash">Cash</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+
+                        {paymentMethod !== 'credit_card' && (
+                            <div className="form-group">
+                                <label className="form-label">Reference #</label>
+                                <input
+                                    type="text"
+                                    value={paymentReference}
+                                    onChange={(e) => setPaymentReference(e.target.value)}
+                                    className="form-input-basic"
+                                    placeholder="Check #, Transaction ID, etc."
+                                />
+                            </div>
+                        )}
+
+                        <div className="payment-form-actions">
+                            <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() => {
+                                    setIsPaymentModalOpen(false)
+                                    resetPaymentForm()
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                className="btn-primary"
+                                disabled={!selectedOutstandingInvoice || isStripeLoading || isSaving}
+                            >
+                                {paymentMethod === 'credit_card' ? (
+                                    isStripeLoading ? (
+                                        <><span className="spinner-sm" /> Loading...</>
+                                    ) : (
+                                        <><CreditCard size={16} weight="bold" /> Pay with Card</>
+                                    )
+                                ) : (
+                                    <><CheckCircle size={16} weight="bold" /> Record Payment</>
+                                )}
+                            </button>
+                        </div>
+                    </form>
+                )}
             </Modal>
 
             {/* Post Payment to Claim Modal */}

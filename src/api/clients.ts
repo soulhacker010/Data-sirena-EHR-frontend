@@ -71,6 +71,13 @@ export const clientsApi = {
         await apiClient.delete(`/clients/${clientId}/documents/${documentId}/`)
     },
 
+    getDocumentAccessUrl: async (clientId: string, documentId: string, download = false): Promise<{ url: string }> => {
+        const { data } = await apiClient.get<{ url: string }>(`/clients/${clientId}/documents/${documentId}/access/`, {
+            params: download ? { download: '1' } : undefined,
+        })
+        return data
+    },
+
     // ─── Import ───────────────────────────────────────────────────────────
     importCSV: async (file: File): Promise<{ imported: number; errors: number }> => {
         const formData = new FormData()

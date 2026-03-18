@@ -44,13 +44,14 @@ export interface ActivityItem {
 
 export interface BillingOverview {
     invoices_pending: number
+    outstanding_balance: number
     claims_submitted: number
     claims_denied: number
     collections_rate: number
 }
 
 // ─── Notifications ───────────────────────────────────────────────────────────
-export type NotificationType = 'auth_expiring' | 'missing_note' | 'appointment_reminder' | 'claim_denied' | 'general'
+export type NotificationType = 'auth_expiring' | 'missing_note' | 'appointment_reminder' | 'claim_denied' | 'payment_received' | 'general'
 export type NotificationPriority = 'low' | 'medium' | 'high' | 'urgent'
 
 export interface Notification {

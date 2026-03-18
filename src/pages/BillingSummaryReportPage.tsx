@@ -47,7 +47,7 @@ export default function BillingSummaryReportPage() {
 
     const handleExportCSV = () => {
         if (!data) return
-        const headers = ['Payer', 'Billed', 'Collected', 'Outstanding']
+        const headers = ['Client', 'Billed', 'Collected', 'Outstanding']
         const rows = data.payer_breakdown.map(p => [
             p.payer_name,
             formatCurrency(p.billed),
@@ -128,14 +128,14 @@ export default function BillingSummaryReportPage() {
             {/* Payer Breakdown */}
             <div className="card" style={{ marginTop: '1.5rem' }}>
                 <div className="card-header">
-                    <h2 className="card-title">Payer Breakdown</h2>
+                    <h2 className="card-title">Client Breakdown</h2>
                 </div>
                 <div className="card-body p-0">
                     {data.payer_breakdown.length > 0 ? (
                         <table className="data-table">
                             <thead>
                                 <tr>
-                                    <th>Payer</th>
+                                    <th>Client</th>
                                     <th>Billed</th>
                                     <th>Collected</th>
                                     <th>Outstanding</th>
@@ -165,7 +165,7 @@ export default function BillingSummaryReportPage() {
                             </tbody>
                         </table>
                     ) : (
-                        <EmptyState variant="no-data" title="No payer data" description="No payer breakdown available for the selected period." />
+                        <EmptyState variant="no-data" title="No client data" description="No client billing breakdown available for the selected period." />
                     )}
                 </div>
             </div>

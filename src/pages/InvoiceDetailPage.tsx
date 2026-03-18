@@ -5,6 +5,7 @@ import { DashboardLayout } from '../components/layout'
 import Modal from '../components/ui/Modal'
 import { PageSkeleton } from '../components/ui'
 import { billingApi } from '../api'
+import StripePaymentForm from '../components/billing/StripePaymentForm'
 import type { Invoice, Payment } from '../types'
 import {
     ArrowLeft,
@@ -33,6 +34,17 @@ export default function InvoiceDetailPage() {
     const [paymentMethod, setPaymentMethod] = useState('credit_card')
     const [paymentReference, setPaymentReference] = useState('')
     const [isSendingEmail, setIsSendingEmail] = useState(false)
+    const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null)
+    const [isStripeLoading, setIsStripeLoading] = useState(false)
+
+    const refreshInvoiceData = async (invoiceId: string) => {
+        const [inv, paymentsRes] = await Promise.all([
+            billingApi.getInvoice(invoiceId),
+            billingApi.getPayments({ invoice_id: invoiceId }),
+        ])
+        setInvoice(inv)
+        setPayments(paymentsRes.results)
+    }
 
     // Fetch invoice detail
     useEffect(() => {
@@ -40,12 +52,7 @@ export default function InvoiceDetailPage() {
         const load = async () => {
             setIsLoading(true)
             try {
-                const [inv, paymentsRes] = await Promise.all([
-                    billingApi.getInvoice(id),
-                    billingApi.getPayments({ invoice_id: id }),
-                ])
-                setInvoice(inv)
-                setPayments(paymentsRes.results)
+                await refreshInvoiceData(id)
             } catch (err: any) {
                 toast.error(err?.response?.data?.detail || 'Failed to load invoice')
                 navigate('/billing')
@@ -86,17 +93,43 @@ export default function InvoiceDetailPage() {
             setShowPaymentModal(false)
             setPaymentAmount('')
             setPaymentReference('')
-
-            // Refresh invoice data
-            const [inv, paymentsRes] = await Promise.all([
-                billingApi.getInvoice(invoice.id),
-                billingApi.getPayments({ invoice_id: invoice.id }),
-            ])
-            setInvoice(inv)
-            setPayments(paymentsRes.results)
+            setStripeClientSecret(null)
+            await refreshInvoiceData(invoice.id)
         } catch (err: any) {
             toast.error(err?.response?.data?.detail || 'Failed to record payment')
         }
+    }
+
+    const handleStripePayment = async () => {
+        if (!invoice || !paymentAmount) return
+        const amount = parseFloat(paymentAmount)
+        if (isNaN(amount) || amount <= 0) {
+            toast.error('Amount must be greater than zero')
+            return
+        }
+
+        setIsStripeLoading(true)
+        try {
+            const { client_secret } = await billingApi.createStripePayment({
+                invoice_id: invoice.id,
+                amount,
+            })
+            setStripeClientSecret(client_secret)
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message || 'Failed to initialize payment')
+        } finally {
+            setIsStripeLoading(false)
+        }
+    }
+
+    const handleStripeSuccess = async () => {
+        if (!invoice) return
+        toast.success('Payment successful!')
+        setStripeClientSecret(null)
+        setShowPaymentModal(false)
+        setPaymentAmount('')
+        setPaymentReference('')
+        await refreshInvoiceData(invoice.id)
     }
 
     const handleDownloadPDF = async () => {
@@ -343,63 +376,84 @@ export default function InvoiceDetailPage() {
             {/* Record Payment Modal */}
             <Modal
                 isOpen={showPaymentModal}
-                onClose={() => setShowPaymentModal(false)}
+                onClose={() => {
+                    setShowPaymentModal(false)
+                    setStripeClientSecret(null)
+                }}
                 title="Record Payment"
             >
-                <div className="payment-modal-form">
-                    <div className="form-group">
-                        <label>Payment Amount</label>
-                        <div className="input-with-prefix">
-                            <span className="input-prefix">$</span>
+                {stripeClientSecret ? (
+                    <StripePaymentForm
+                        clientSecret={stripeClientSecret}
+                        amount={parseFloat(paymentAmount)}
+                        invoiceNumber={invoice.invoice_number}
+                        onSuccess={handleStripeSuccess}
+                        onCancel={() => setStripeClientSecret(null)}
+                    />
+                ) : (
+                    <div className="payment-modal-form">
+                        <div className="form-group">
+                            <label>Payment Amount</label>
+                            <div className="input-with-prefix">
+                                <span className="input-prefix">$</span>
+                                <input
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="0.00"
+                                    value={paymentAmount}
+                                    onChange={(e) => setPaymentAmount(e.target.value)}
+                                />
+                            </div>
+                            <p className="form-hint">Balance due: {formatCurrency(invoice.balance)}</p>
+                        </div>
+
+                        <div className="form-group">
+                            <label>Payment Method</label>
+                            <select
+                                value={paymentMethod}
+                                onChange={(e) => setPaymentMethod(e.target.value)}
+                            >
+                                <option value="credit_card">Credit Card</option>
+                                <option value="eft">EFT Transfer</option>
+                                <option value="check">Check</option>
+                                <option value="cash">Cash</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+
+                        <div className="form-group">
+                            <label>Reference / Notes</label>
                             <input
-                                type="number"
-                                step="0.01"
-                                placeholder="0.00"
-                                value={paymentAmount}
-                                onChange={(e) => setPaymentAmount(e.target.value)}
+                                type="text"
+                                placeholder="e.g., Check #1234, Last 4 digits, etc."
+                                value={paymentReference}
+                                onChange={(e) => setPaymentReference(e.target.value)}
                             />
                         </div>
-                        <p className="form-hint">Balance due: {formatCurrency(invoice.balance)}</p>
-                    </div>
 
-                    <div className="form-group">
-                        <label>Payment Method</label>
-                        <select
-                            value={paymentMethod}
-                            onChange={(e) => setPaymentMethod(e.target.value)}
-                        >
-                            <option value="credit_card">Credit Card</option>
-                            <option value="eft">EFT Transfer</option>
-                            <option value="check">Check</option>
-                            <option value="cash">Cash</option>
-                            <option value="other">Other</option>
-                        </select>
+                        <div className="modal-actions">
+                            <button
+                                className="btn-outline"
+                                onClick={() => {
+                                    setShowPaymentModal(false)
+                                    setStripeClientSecret(null)
+                                }}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                className="btn-primary"
+                                onClick={paymentMethod === 'credit_card' ? handleStripePayment : handleRecordPayment}
+                                disabled={!paymentAmount || parseFloat(paymentAmount) <= 0 || isStripeLoading}
+                            >
+                                {paymentMethod === 'credit_card' ? <CreditCard size={18} /> : <Plus size={18} />}
+                                {paymentMethod === 'credit_card'
+                                    ? (isStripeLoading ? 'Loading Stripe...' : 'Continue to Card Payment')
+                                    : 'Record Payment'}
+                            </button>
+                        </div>
                     </div>
-
-                    <div className="form-group">
-                        <label>Reference / Notes</label>
-                        <input
-                            type="text"
-                            placeholder="e.g., Check #1234, Last 4 digits, etc."
-                            value={paymentReference}
-                            onChange={(e) => setPaymentReference(e.target.value)}
-                        />
-                    </div>
-
-                    <div className="modal-actions">
-                        <button className="btn-outline" onClick={() => setShowPaymentModal(false)}>
-                            Cancel
-                        </button>
-                        <button
-                            className="btn-primary"
-                            onClick={handleRecordPayment}
-                            disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
-                        >
-                            <Plus size={18} />
-                            Record Payment
-                        </button>
-                    </div>
-                </div>
+                )}
             </Modal>
         </DashboardLayout>
     )

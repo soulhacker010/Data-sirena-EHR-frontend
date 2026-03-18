@@ -88,6 +88,11 @@ export const billingApi = {
         return data
     },
 
+    markClaimSubmitted: async (id: string): Promise<Claim> => {
+        const { data } = await apiClient.post<Claim>(`/claims/${id}/submit/`)
+        return data
+    },
+
     resubmitClaim: async (id: string): Promise<Claim> => {
         const { data } = await apiClient.post<Claim>(`/claims/${id}/submit/`)
         return data

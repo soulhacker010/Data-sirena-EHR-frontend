@@ -16,7 +16,8 @@ import {
     useStripe,
     useElements,
 } from '@stripe/react-stripe-js'
-import { CreditCard, ShieldCheck, Lock, Hospital } from '@phosphor-icons/react'
+import type { PaymentIntent, StripeError } from '@stripe/stripe-js'
+import { CreditCard, ShieldCheck, Lock } from '@phosphor-icons/react'
 import { billingApi } from '../../api/billing'
 
 // Initialize Stripe with the publishable key from env
@@ -57,6 +58,39 @@ function CheckoutForm({ clientSecret, amount, invoiceNumber, onSuccess, onCancel
     const [isProcessing, setIsProcessing] = useState(false)
     const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
+    const finalizeSuccessfulPayment = async (paymentIntentId: string) => {
+        try {
+            await billingApi.confirmStripePayment(paymentIntentId)
+        } catch {
+            // no-op: webhook remains fallback
+        }
+        onSuccess()
+    }
+
+    const handlePaymentError = async (error: StripeError) => {
+        const succeededPaymentIntent = error.code === 'payment_intent_unexpected_state'
+            ? error.payment_intent
+            : undefined
+
+        if (succeededPaymentIntent?.status === 'succeeded') {
+            await finalizeSuccessfulPayment(succeededPaymentIntent.id)
+            return
+        }
+
+        setErrorMessage(error.message || 'Payment failed. Please try again.')
+        setIsProcessing(false)
+    }
+
+    const handlePaymentSuccess = async (paymentIntent: PaymentIntent) => {
+        if (paymentIntent.status === 'succeeded') {
+            await finalizeSuccessfulPayment(paymentIntent.id)
+            return
+        }
+
+        setErrorMessage('Payment was not completed. Please try again.')
+        setIsProcessing(false)
+    }
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!stripe || !elements) return
@@ -76,31 +110,17 @@ function CheckoutForm({ clientSecret, amount, invoiceNumber, onSuccess, onCancel
         })
 
         if (error) {
-            // Special case: PI already succeeded (e.g. from a retry)
-            // The payment went through — we just need to record it
-            if (error.code === 'payment_intent_unexpected_state' && error.payment_intent?.status === 'succeeded') {
-                try {
-                    await billingApi.confirmStripePayment(error.payment_intent.id)
-                } catch (confirmErr) {
-                    console.warn('Confirm after unexpected state failed:', confirmErr)
-                }
-                onSuccess()
-                return
-            }
-            setErrorMessage(error.message || 'Payment failed. Please try again.')
-            setIsProcessing(false)
-        } else if (paymentIntent?.status === 'succeeded') {
-            // ✅ Normal flow: card confirmed → record in our DB immediately
-            try {
-                await billingApi.confirmStripePayment(paymentIntent.id)
-            } catch (confirmErr) {
-                console.warn('Stripe confirm endpoint failed, payment still went through:', confirmErr)
-            }
-            onSuccess()
-        } else {
-            setErrorMessage('Payment was not completed. Please try again.')
-            setIsProcessing(false)
+            await handlePaymentError(error)
+            return
         }
+
+        if (paymentIntent) {
+            await handlePaymentSuccess(paymentIntent)
+            return
+        }
+
+        setErrorMessage('Payment was not completed. Please try again.')
+        setIsProcessing(false)
     }
 
     return (
@@ -108,7 +128,7 @@ function CheckoutForm({ clientSecret, amount, invoiceNumber, onSuccess, onCancel
             {/* Practice branding header */}
             <div className="stripe-brand-header">
                 <div className="stripe-brand-icon">
-                    <Hospital size={22} weight="duotone" />
+                    <img src="/images/EHRlogo.png" alt="Sirena Health EHR" className="stripe-brand-logo" />
                 </div>
                 <div className="stripe-brand-info">
                     <span className="stripe-brand-name">Sirena Health EHR</span>

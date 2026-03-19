@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { EmptyState, PageSkeleton } from '../components/ui'
 import { dashboardApi, notificationsApi, getApiErrorMessage } from '../api'
+import { useAuth } from '../context'
+import { BILLING_ROLES } from '../utils/permissions'
 import type { Notification, DashboardStats } from '../types'
 import {
     BellRinging,
@@ -35,6 +37,8 @@ interface ImportantEvent {
 
 export default function NotificationsPage() {
     const navigate = useNavigate()
+    const { user } = useAuth()
+    const canAccessBilling = user ? BILLING_ROLES.includes(user.role) : false
     const [notifications, setNotifications] = useState<Notification[]>([])
     const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
     const [filterType, setFilterType] = useState<string>('all')
@@ -162,17 +166,19 @@ export default function NotificationsPage() {
     }
 
     const events = useMemo<ImportantEvent[]>(() => {
-        const notificationEvents: ImportantEvent[] = notifications.map((notification) => ({
-            id: notification.id,
-            title: notification.title,
-            message: notification.message,
-            category: toEventCategory(notification.type),
-            priority: notification.priority,
-            is_read: notification.is_read,
-            action_url: notification.action_url,
-            created_at: notification.created_at,
-            source: 'notification',
-        }))
+        const notificationEvents: ImportantEvent[] = notifications
+            .map((notification) => ({
+                id: notification.id,
+                title: notification.title,
+                message: notification.message,
+                category: toEventCategory(notification.type),
+                priority: notification.priority,
+                is_read: notification.is_read,
+                action_url: notification.action_url,
+                created_at: notification.created_at,
+                source: 'notification' as const,
+            }))
+            .filter(event => canAccessBilling || event.category !== 'billing')
 
         const summaryEvents: ImportantEvent[] = []
         if (dashboardStats) {
@@ -190,7 +196,7 @@ export default function NotificationsPage() {
                 })
             }
 
-            if (dashboardStats.billing_overview.claims_denied > 0) {
+            if (canAccessBilling && dashboardStats.billing_overview.claims_denied > 0) {
                 summaryEvents.push({
                     id: 'summary-claims-denied',
                     title: 'Denied claims need review',
@@ -204,7 +210,7 @@ export default function NotificationsPage() {
                 })
             }
 
-            if (dashboardStats.billing_overview.invoices_pending > 0) {
+            if (canAccessBilling && dashboardStats.billing_overview.invoices_pending > 0) {
                 summaryEvents.push({
                     id: 'summary-invoices-pending',
                     title: 'Pending invoices need attention',

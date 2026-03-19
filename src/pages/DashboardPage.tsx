@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { useAuth } from '../context'
 import { dashboardApi } from '../api'
+import { BILLING_ROLES } from '../utils/permissions'
 import toast from 'react-hot-toast'
 import type { DashboardStats, DashboardAppointment } from '../types'
 import {
@@ -83,6 +84,7 @@ const avatarColors = [
 export default function DashboardPage() {
     const navigate = useNavigate()
     const { user } = useAuth()
+    const canAccessBilling = user ? BILLING_ROLES.includes(user.role) : false
     const [isLoading, setIsLoading] = useState(true)
     const [stats, setStats] = useState<DashboardStats | null>(null)
     const [error, setError] = useState<string | null>(null)
@@ -192,19 +194,21 @@ export default function DashboardPage() {
                     </div>
                 </div>
 
-                <div className="stat-card" onClick={() => navigate('/billing')} style={{ cursor: 'pointer' }}>
-                    <div className="stat-card-content">
-                        <p className="stat-card-label">Revenue MTD</p>
-                        <p className="stat-card-value">${stats.revenue_mtd.toLocaleString()}</p>
-                        <div className="stat-card-trend up">
-                            <CurrencyDollar size={14} weight="bold" />
-                            <span>This month</span>
+                {canAccessBilling && (
+                    <div className="stat-card" onClick={() => navigate('/billing')} style={{ cursor: 'pointer' }}>
+                        <div className="stat-card-content">
+                            <p className="stat-card-label">Revenue MTD</p>
+                            <p className="stat-card-value">${stats.revenue_mtd.toLocaleString()}</p>
+                            <div className="stat-card-trend up">
+                                <CurrencyDollar size={14} weight="bold" />
+                                <span>This month</span>
+                            </div>
+                        </div>
+                        <div className="stat-card-icon purple">
+                            <CurrencyDollar size={22} weight="fill" />
                         </div>
                     </div>
-                    <div className="stat-card-icon purple">
-                        <CurrencyDollar size={22} weight="fill" />
-                    </div>
-                </div>
+                )}
             </div>
 
             {/* Quick Actions */}
@@ -221,81 +225,125 @@ export default function DashboardPage() {
                     <NotePencil size={20} weight="fill" />
                     <span>Create Note</span>
                 </button>
-                <button className="quick-action-btn" onClick={() => navigate('/billing?tab=claims')}>
-                    <PaperPlaneTilt size={20} weight="fill" />
-                    <span>Submit Claims</span>
-                </button>
+                {canAccessBilling && (
+                    <button className="quick-action-btn" onClick={() => navigate('/billing?tab=claims')}>
+                        <PaperPlaneTilt size={20} weight="fill" />
+                        <span>Submit Claims</span>
+                    </button>
+                )}
             </div>
 
             {/* Main Grid - Chart + Calendar/Appointments */}
             <div className="dashboard-grid">
-                {/* Left: Billing Summary */}
+                {/* Left: Billing Summary (billing roles only) or Clinical Summary */}
                 <div className="space-y-6">
-                    {/* Billing Summary */}
-                    <div className="card">
-                        <div className="card-header">
-                            <h2 className="card-title">Billing Summary</h2>
-                            <span className="text-sm text-gray-500 font-semibold">This Month</span>
-                        </div>
-                        <div className="card-body">
-                            <div className="dashboard-billing-grid">
-                                <div className="dashboard-billing-item" onClick={() => navigate('/billing')} style={{ cursor: 'pointer' }}>
-                                    <div className="dashboard-billing-item-icon teal">
-                                        <CurrencyDollar size={20} weight="fill" />
-                                    </div>
-                                    <div className="dashboard-billing-item-content">
-                                        <p className="dashboard-billing-item-label">Revenue MTD</p>
-                                        <p className="dashboard-billing-item-value">${stats.revenue_mtd.toLocaleString()}</p>
+                    {canAccessBilling ? (
+                        <>
+                            {/* Billing Summary */}
+                            <div className="card">
+                                <div className="card-header">
+                                    <h2 className="card-title">Billing Summary</h2>
+                                    <span className="text-sm text-gray-500 font-semibold">This Month</span>
+                                </div>
+                                <div className="card-body">
+                                    <div className="dashboard-billing-grid">
+                                        <div className="dashboard-billing-item" onClick={() => navigate('/billing')} style={{ cursor: 'pointer' }}>
+                                            <div className="dashboard-billing-item-icon teal">
+                                                <CurrencyDollar size={20} weight="fill" />
+                                            </div>
+                                            <div className="dashboard-billing-item-content">
+                                                <p className="dashboard-billing-item-label">Revenue MTD</p>
+                                                <p className="dashboard-billing-item-value">${stats.revenue_mtd.toLocaleString()}</p>
+                                            </div>
+                                        </div>
+                                        <div className="dashboard-billing-item" onClick={() => navigate('/billing')} style={{ cursor: 'pointer' }}>
+                                            <div className="dashboard-billing-item-icon yellow">
+                                                <Receipt size={20} weight="fill" />
+                                            </div>
+                                            <div className="dashboard-billing-item-content">
+                                                <p className="dashboard-billing-item-label">Outstanding Balance</p>
+                                                <p className="dashboard-billing-item-value">{formatCurrency(billing.outstanding_balance)}</p>
+                                                <p className="dashboard-billing-item-meta">
+                                                    {billing.invoices_pending} open invoice{billing.invoices_pending === 1 ? '' : 's'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="dashboard-billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
+                                            <div className="dashboard-billing-item-icon green">
+                                                <CheckCircle size={20} weight="fill" />
+                                            </div>
+                                            <div className="dashboard-billing-item-content">
+                                                <p className="dashboard-billing-item-label">Claims Sent</p>
+                                                <p className="dashboard-billing-item-value">{billing.claims_submitted}</p>
+                                            </div>
+                                        </div>
+                                        <div className="dashboard-billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
+                                            <div className="dashboard-billing-item-icon red">
+                                                <Warning size={20} weight="fill" />
+                                            </div>
+                                            <div className="dashboard-billing-item-content">
+                                                <p className="dashboard-billing-item-label">Claims Denied</p>
+                                                <p className="dashboard-billing-item-value">{billing.claims_denied}</p>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="dashboard-billing-item" onClick={() => navigate('/billing')} style={{ cursor: 'pointer' }}>
-                                    <div className="dashboard-billing-item-icon yellow">
-                                        <Receipt size={20} weight="fill" />
-                                    </div>
-                                    <div className="dashboard-billing-item-content">
-                                        <p className="dashboard-billing-item-label">Outstanding Balance</p>
-                                        <p className="dashboard-billing-item-value">{formatCurrency(billing.outstanding_balance)}</p>
-                                        <p className="dashboard-billing-item-meta">
-                                            {billing.invoices_pending} open invoice{billing.invoices_pending === 1 ? '' : 's'}
-                                        </p>
-                                    </div>
+                            </div>
+
+                            {/* Collections Rate */}
+                            <div className="card">
+                                <div className="card-header">
+                                    <h2 className="card-title">Collections Rate</h2>
                                 </div>
-                                <div className="dashboard-billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
-                                    <div className="dashboard-billing-item-icon green">
-                                        <CheckCircle size={20} weight="fill" />
-                                    </div>
-                                    <div className="dashboard-billing-item-content">
-                                        <p className="dashboard-billing-item-label">Claims Sent</p>
-                                        <p className="dashboard-billing-item-value">{billing.claims_submitted}</p>
-                                    </div>
+                                <div className="card-body" style={{ textAlign: 'center', padding: '2rem' }}>
+                                    <p style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0D9488' }}>
+                                        {billing.collections_rate}%
+                                    </p>
+                                    <p style={{ fontSize: '0.875rem', color: '#64748B', fontWeight: 600 }}>
+                                        of billed amount collected this month
+                                    </p>
                                 </div>
-                                <div className="dashboard-billing-item" onClick={() => navigate('/billing?tab=claims')} style={{ cursor: 'pointer' }}>
-                                    <div className="dashboard-billing-item-icon red">
-                                        <Warning size={20} weight="fill" />
+                            </div>
+                        </>
+                    ) : (
+                        <div className="card">
+                            <div className="card-header">
+                                <h2 className="card-title">Clinical Overview</h2>
+                                <span className="text-sm text-gray-500 font-semibold">This Month</span>
+                            </div>
+                            <div className="card-body">
+                                <div className="dashboard-billing-grid">
+                                    <div className="dashboard-billing-item" onClick={() => navigate('/clients')} style={{ cursor: 'pointer' }}>
+                                        <div className="dashboard-billing-item-icon teal">
+                                            <UsersThree size={20} weight="fill" />
+                                        </div>
+                                        <div className="dashboard-billing-item-content">
+                                            <p className="dashboard-billing-item-label">Active Clients</p>
+                                            <p className="dashboard-billing-item-value">{stats.total_clients}</p>
+                                        </div>
                                     </div>
-                                    <div className="dashboard-billing-item-content">
-                                        <p className="dashboard-billing-item-label">Claims Denied</p>
-                                        <p className="dashboard-billing-item-value">{billing.claims_denied}</p>
+                                    <div className="dashboard-billing-item" onClick={() => navigate('/notes')} style={{ cursor: 'pointer' }}>
+                                        <div className="dashboard-billing-item-icon yellow">
+                                            <FileText size={20} weight="fill" />
+                                        </div>
+                                        <div className="dashboard-billing-item-content">
+                                            <p className="dashboard-billing-item-label">Pending Notes</p>
+                                            <p className="dashboard-billing-item-value">{stats.pending_notes}</p>
+                                        </div>
+                                    </div>
+                                    <div className="dashboard-billing-item" onClick={() => navigate('/calendar')} style={{ cursor: 'pointer' }}>
+                                        <div className="dashboard-billing-item-icon green">
+                                            <CalendarCheck size={20} weight="fill" />
+                                        </div>
+                                        <div className="dashboard-billing-item-content">
+                                            <p className="dashboard-billing-item-label">Sessions This Month</p>
+                                            <p className="dashboard-billing-item-value">{stats.sessions_this_month}</p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-
-                    {/* Collections Rate */}
-                    <div className="card">
-                        <div className="card-header">
-                            <h2 className="card-title">Collections Rate</h2>
-                        </div>
-                        <div className="card-body" style={{ textAlign: 'center', padding: '2rem' }}>
-                            <p style={{ fontSize: '2.5rem', fontWeight: 800, color: '#0D9488' }}>
-                                {billing.collections_rate}%
-                            </p>
-                            <p style={{ fontSize: '0.875rem', color: '#64748B', fontWeight: 600 }}>
-                                of billed amount collected this month
-                            </p>
-                        </div>
-                    </div>
+                    )}
                 </div>
 
                 {/* Right: Calendar + Appointments */}

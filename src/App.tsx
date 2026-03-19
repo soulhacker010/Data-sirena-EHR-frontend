@@ -71,8 +71,8 @@ function App() {
             <Route path="/reports/payments" element={<ProtectedRoute allowedRoles={SUPERVISOR_ROLES}><PaymentsReportPage /></ProtectedRoute>} />
             <Route path="/reports/analytics" element={<ProtectedRoute allowedRoles={SUPERVISOR_ROLES}><AnalyticsPage /></ProtectedRoute>} />
 
-            {/* Settings — IsAdmin */}
-            <Route path="/settings" element={<ProtectedRoute allowedRoles={ADMIN_ONLY}><SettingsPage /></ProtectedRoute>} />
+            {/* Settings — all authenticated users */}
+            <Route path="/settings" element={<ProtectedRoute allowedRoles={ALL_ROLES}><SettingsPage /></ProtectedRoute>} />
 
             {/* Notifications — everyone */}
             <Route path="/notifications" element={<ProtectedRoute allowedRoles={ALL_ROLES}><NotificationsPage /></ProtectedRoute>} />

@@ -5,6 +5,8 @@ import { DashboardLayout } from '../components/layout'
 import { Modal, EditClientModal, EmptyState, PageSkeleton, ConfirmDialog } from '../components/ui'
 import StripePaymentForm from '../components/billing/StripePaymentForm'
 import { clientsApi, billingApi, notesApi } from '../api'
+import { useAuth } from '../context'
+import { BILLING_ROLES } from '../utils/permissions'
 import type { ClientDetail, Authorization, ClientDocument, Invoice, Payment, Claim, SessionNote } from '../types'
 import {
     ArrowLeft,
@@ -89,6 +91,8 @@ const openExternalDocument = (url: string) => {
 export default function ClientDetailPage() {
     const { id } = useParams()
     const navigate = useNavigate()
+    const { user } = useAuth()
+    const canAccessBilling = user ? BILLING_ROLES.includes(user.role) : false
 
     const [client, setClient] = useState<ClientDetail | null>(null)
     const [authorizations, setAuthorizations] = useState<Authorization[]>([])
@@ -137,19 +141,24 @@ export default function ClientDetailPage() {
         const load = async () => {
             setIsLoading(true)
             try {
-                const [clientData, invoicesRes, paymentsRes, claimsData, notesRes] = await Promise.all([
+                const [clientData, notesRes] = await Promise.all([
                     clientsApi.getById(id),
-                    billingApi.getInvoices({ client_id: id }),
-                    billingApi.getPayments({ client_id: id }),
-                    billingApi.getClientClaims(id),
                     notesApi.getAll({ client_id: id, page_size: 100 }),
                 ])
                 setClient(clientData)
                 setAuthorizations(clientData.authorizations || [])
-                setInvoices(invoicesRes.results)
-                setPayments(paymentsRes.results)
-                setClaims(claimsData)
                 setClientNotes(notesRes.results)
+
+                if (canAccessBilling) {
+                    const [invoicesRes, paymentsRes, claimsData] = await Promise.all([
+                        billingApi.getInvoices({ client_id: id }),
+                        billingApi.getPayments({ client_id: id }),
+                        billingApi.getClientClaims(id),
+                    ])
+                    setInvoices(invoicesRes.results)
+                    setPayments(paymentsRes.results)
+                    setClaims(claimsData)
+                }
             } catch (err: any) {
                 toast.error(err?.response?.data?.detail || 'Failed to load client')
                 navigate('/clients')
@@ -452,9 +461,11 @@ export default function ClientDetailPage() {
                 <button className={`client-tab ${activeTab === 'documents' ? 'active' : ''}`} onClick={() => setActiveTab('documents')}>
                     <File size={18} weight="duotone" /> Documents
                 </button>
-                <button className={`client-tab ${activeTab === 'billing' ? 'active' : ''}`} onClick={() => setActiveTab('billing')}>
-                    <CurrencyDollar size={18} weight="duotone" /> Billing
-                </button>
+                {canAccessBilling && (
+                    <button className={`client-tab ${activeTab === 'billing' ? 'active' : ''}`} onClick={() => setActiveTab('billing')}>
+                        <CurrencyDollar size={18} weight="duotone" /> Billing
+                    </button>
+                )}
             </div>
 
             {/* Tab Content */}

@@ -36,6 +36,8 @@ export default function SettingsPage() {
     const [isLoading, setIsLoading] = useState(true)
     const [isSaving, setIsSaving] = useState(false)
 
+    const isAdmin = user?.role === 'admin'
+
     // Profile state — from auth context
     const [profile, setProfile] = useState({
         firstName: '',
@@ -44,6 +46,7 @@ export default function SettingsPage() {
         phone: '',
         role: ''
     })
+    const [isProfileSaving, setIsProfileSaving] = useState(false)
 
     // Practice/org state — from settings API
     const [practice, setPractice] = useState({
@@ -105,6 +108,21 @@ export default function SettingsPage() {
         }
         load()
     }, [user])
+
+    const handleSaveProfile = async () => {
+        try {
+            setIsProfileSaving(true)
+            await authApi.updateProfile({
+                first_name: profile.firstName,
+                last_name: profile.lastName,
+            })
+            toast.success('Profile updated successfully')
+        } catch (err: any) {
+            toast.error(err?.response?.data?.message || 'Failed to update profile')
+        } finally {
+            setIsProfileSaving(false)
+        }
+    }
 
     const handlePasswordFieldChange = (field: string, value: string) => {
         setPasswordData(prev => ({ ...prev, [field]: value }))
@@ -221,7 +239,7 @@ export default function SettingsPage() {
                     {activeSection === 'profile' && (
                         <div className="settings-section">
                             <h2 className="settings-section-title">Profile Information</h2>
-                            <p className="settings-section-desc">Your personal information — contact your admin to update.</p>
+                            <p className="settings-section-desc">Update your name. Email and role can only be changed by an administrator.</p>
 
                             <div className="form-grid">
                                 <div className="form-group">
@@ -230,7 +248,7 @@ export default function SettingsPage() {
                                         type="text"
                                         className="form-input-basic"
                                         value={profile.firstName}
-                                        disabled
+                                        onChange={(e) => setProfile(prev => ({ ...prev, firstName: e.target.value }))}
                                     />
                                 </div>
                                 <div className="form-group">
@@ -239,7 +257,7 @@ export default function SettingsPage() {
                                         type="text"
                                         className="form-input-basic"
                                         value={profile.lastName}
-                                        disabled
+                                        onChange={(e) => setProfile(prev => ({ ...prev, lastName: e.target.value }))}
                                     />
                                 </div>
                                 <div className="form-group">
@@ -263,6 +281,12 @@ export default function SettingsPage() {
                                     />
                                 </div>
                             </div>
+
+                            <div className="form-actions">
+                                <button className="btn-primary" onClick={handleSaveProfile} disabled={isProfileSaving}>
+                                    {isProfileSaving ? 'Saving...' : 'Save Profile'}
+                                </button>
+                            </div>
                         </div>
                     )}
 
@@ -270,7 +294,11 @@ export default function SettingsPage() {
                     {activeSection === 'practice' && (
                         <div className="settings-section">
                             <h2 className="settings-section-title">Practice Information</h2>
-                            <p className="settings-section-desc">Your organization's details used on invoices and claims.</p>
+                            <p className="settings-section-desc">
+                                {isAdmin
+                                    ? "Your organization's details used on invoices and claims."
+                                    : "Your organization's details (read-only — only administrators can edit)."}
+                            </p>
 
                             <div className="form-grid">
                                 <div className="form-group full-width">
@@ -282,6 +310,7 @@ export default function SettingsPage() {
                                         className="form-input-basic"
                                         value={practice.name}
                                         onChange={(e) => setPractice(prev => ({ ...prev, name: e.target.value }))}
+                                        disabled={!isAdmin}
                                     />
                                 </div>
                                 <div className="form-group full-width">
@@ -293,6 +322,7 @@ export default function SettingsPage() {
                                         rows={2}
                                         value={practice.address}
                                         onChange={(e) => setPractice(prev => ({ ...prev, address: e.target.value }))}
+                                        disabled={!isAdmin}
                                     />
                                 </div>
                                 <div className="form-group">
@@ -304,6 +334,7 @@ export default function SettingsPage() {
                                         className="form-input-basic"
                                         value={practice.contact_phone}
                                         onChange={(e) => setPractice(prev => ({ ...prev, contact_phone: e.target.value }))}
+                                        disabled={!isAdmin}
                                     />
                                 </div>
                                 <div className="form-group">
@@ -315,6 +346,7 @@ export default function SettingsPage() {
                                         className="form-input-basic"
                                         value={practice.contact_email}
                                         onChange={(e) => setPractice(prev => ({ ...prev, contact_email: e.target.value }))}
+                                        disabled={!isAdmin}
                                     />
                                 </div>
                                 <div className="form-group">
@@ -324,20 +356,23 @@ export default function SettingsPage() {
                                         className="form-input-basic"
                                         value={practice.tax_id}
                                         onChange={(e) => setPractice(prev => ({ ...prev, tax_id: e.target.value }))}
+                                        disabled={!isAdmin}
                                     />
                                 </div>
                             </div>
 
-                            <div className="form-actions">
-                                <button className="btn-primary" onClick={handleSavePractice} disabled={isSaving}>
-                                    {isSaving ? 'Saving...' : 'Save Changes'}
-                                </button>
-                                {saved && (
-                                    <span className="save-indicator">
-                                        <CheckCircle size={18} weight="fill" /> Saved
-                                    </span>
-                                )}
-                            </div>
+                            {isAdmin && (
+                                <div className="form-actions">
+                                    <button className="btn-primary" onClick={handleSavePractice} disabled={isSaving}>
+                                        {isSaving ? 'Saving...' : 'Save Changes'}
+                                    </button>
+                                    {saved && (
+                                        <span className="save-indicator">
+                                            <CheckCircle size={18} weight="fill" /> Saved
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                         </div>
                     )}
 

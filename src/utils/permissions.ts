@@ -67,7 +67,7 @@ const routePermissions: RoutePermission[] = [
     // Admin pages — IsAdmin
     { path: '/admin/users', roles: ADMIN_ONLY },
     { path: '/admin/audit', roles: ADMIN_ONLY },
-    { path: '/settings', roles: ADMIN_ONLY },
+    { path: '/settings', roles: ALL_ROLES },
 
     // Billing pages — IsBiller (admin + biller)
     { path: '/billing', roles: BILLING_ROLES },

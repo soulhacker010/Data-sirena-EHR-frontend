@@ -5,7 +5,7 @@ import { DashboardLayout } from '../components/layout'
 import { EmptyState, PageSkeleton } from '../components/ui'
 import { dashboardApi, notificationsApi, getApiErrorMessage } from '../api'
 import { useAuth } from '../context'
-import { BILLING_ROLES } from '../utils/permissions'
+import { canSeeNotificationCategory, canAccess, getVisibleNotificationFilters, CLINICAL_ROLES, BILLING_ROLES } from '../utils/permissions'
 import type { Notification, DashboardStats } from '../types'
 import {
     BellRinging,
@@ -38,7 +38,9 @@ interface ImportantEvent {
 export default function NotificationsPage() {
     const navigate = useNavigate()
     const { user } = useAuth()
-    const canAccessBilling = user ? BILLING_ROLES.includes(user.role) : false
+    const role = user?.role || 'clinician'
+    const canAccessBilling = BILLING_ROLES.includes(role)
+    const canAccessClinical = CLINICAL_ROLES.includes(role)
     const [notifications, setNotifications] = useState<Notification[]>([])
     const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null)
     const [filterType, setFilterType] = useState<string>('all')
@@ -178,11 +180,11 @@ export default function NotificationsPage() {
                 created_at: notification.created_at,
                 source: 'notification' as const,
             }))
-            .filter(event => canAccessBilling || event.category !== 'billing')
+            .filter(event => canSeeNotificationCategory(role, event.category))
 
         const summaryEvents: ImportantEvent[] = []
         if (dashboardStats) {
-            if (dashboardStats.pending_notes > 0) {
+            if (canAccessClinical && dashboardStats.pending_notes > 0) {
                 summaryEvents.push({
                     id: 'summary-pending-notes',
                     title: 'Pending session notes need attention',
@@ -238,7 +240,7 @@ export default function NotificationsPage() {
 
         return [...notificationEvents, ...summaryEvents, ...activityEvents]
             .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    }, [dashboardStats, notifications])
+    }, [dashboardStats, notifications, role, canAccessBilling, canAccessClinical])
 
     const unreadCount = notifications.filter(n => !n.is_read).length
     const actionableCount = events.filter(event => event.priority === 'high' || event.priority === 'urgent').length
@@ -294,16 +296,7 @@ export default function NotificationsPage() {
 
             {/* Filter tabs */}
             <div className="notification-filters">
-                {[
-                    { value: 'all', label: 'All' },
-                    { value: 'unread', label: 'Unread' },
-                    { value: 'authorization', label: 'Authorization' },
-                    { value: 'billing', label: 'Billing' },
-                    { value: 'appointment', label: 'Appointment' },
-                    { value: 'notes', label: 'Notes' },
-                    { value: 'activity', label: 'Activity' },
-                    { value: 'general', label: 'General' },
-                ].map(tab => (
+                {getVisibleNotificationFilters(role).map(tab => (
                     <button
                         key={tab.value}
                         className={`notification-filter-tab ${filterType === tab.value ? 'active' : ''}`}
@@ -342,7 +335,7 @@ export default function NotificationsPage() {
                                 <span className="notification-source">
                                     {n.source === 'notification' ? 'Notification' : n.source === 'summary' ? 'Summary' : 'Activity'}
                                 </span>
-                                {n.action_url && (
+                                {n.action_url && canAccess(role, n.action_url) && (
                                     <button className="notification-link-btn" onClick={() => navigate(n.action_url || '/notifications')}>
                                         Open
                                         <ArrowRight size={14} />

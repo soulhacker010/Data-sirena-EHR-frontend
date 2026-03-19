@@ -1,4 +1,5 @@
 import axios from 'axios'
+import toast from 'react-hot-toast'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1'
 
@@ -44,6 +45,15 @@ apiClient.interceptors.response.use(
     (response) => response,
     async (error) => {
         const originalRequest = error.config
+
+        // 403 Forbidden — user doesn't have the right role for this endpoint
+        if (error.response?.status === 403) {
+            const message = error.response?.data?.detail
+                || error.response?.data?.message
+                || "You don't have permission to perform this action."
+            toast.error(message, { id: 'permission-denied' })
+            return Promise.reject(error)
+        }
 
         if (error.response?.status === 401 && !originalRequest._retry) {
             if (isRefreshing) {

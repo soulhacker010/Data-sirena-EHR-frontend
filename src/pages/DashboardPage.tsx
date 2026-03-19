@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { useAuth } from '../context'
 import { dashboardApi } from '../api'
-import { BILLING_ROLES } from '../utils/permissions'
+import { BILLING_ROLES, SCHEDULING_ROLES, CLINICAL_ROLES } from '../utils/permissions'
 import toast from 'react-hot-toast'
 import type { DashboardStats, DashboardAppointment } from '../types'
 import {
@@ -85,6 +85,8 @@ export default function DashboardPage() {
     const navigate = useNavigate()
     const { user } = useAuth()
     const canAccessBilling = user ? BILLING_ROLES.includes(user.role) : false
+    const canAccessScheduling = user ? SCHEDULING_ROLES.includes(user.role) : false
+    const canAccessClinical = user ? CLINICAL_ROLES.includes(user.role) : false
     const [isLoading, setIsLoading] = useState(true)
     const [stats, setStats] = useState<DashboardStats | null>(null)
     const [error, setError] = useState<string | null>(null)
@@ -150,49 +152,55 @@ export default function DashboardPage() {
                 </h1>
             </div>
 
-            {/* Stats Cards */}
+            {/* Stats Cards — filtered by role */}
             <div className="stats-grid">
-                <div className="stat-card" onClick={() => navigate('/clients')} style={{ cursor: 'pointer' }}>
-                    <div className="stat-card-content">
-                        <p className="stat-card-label">Total Clients</p>
-                        <p className="stat-card-value">{stats.total_clients}</p>
-                        <div className="stat-card-trend up">
-                            <TrendUp size={14} weight="bold" />
-                            <span>Active</span>
+                {canAccessScheduling && (
+                    <div className="stat-card" onClick={() => navigate('/clients')} style={{ cursor: 'pointer' }}>
+                        <div className="stat-card-content">
+                            <p className="stat-card-label">Total Clients</p>
+                            <p className="stat-card-value">{stats.total_clients}</p>
+                            <div className="stat-card-trend up">
+                                <TrendUp size={14} weight="bold" />
+                                <span>Active</span>
+                            </div>
+                        </div>
+                        <div className="stat-card-icon teal">
+                            <UsersThree size={22} weight="fill" />
                         </div>
                     </div>
-                    <div className="stat-card-icon teal">
-                        <UsersThree size={22} weight="fill" />
-                    </div>
-                </div>
+                )}
 
-                <div className="stat-card" onClick={() => navigate('/calendar')} style={{ cursor: 'pointer' }}>
-                    <div className="stat-card-content">
-                        <p className="stat-card-label">Sessions This Month</p>
-                        <p className="stat-card-value">{stats.sessions_this_month}</p>
-                        <div className="stat-card-trend up">
-                            <TrendUp size={14} weight="bold" />
-                            <span>This month</span>
+                {canAccessScheduling && (
+                    <div className="stat-card" onClick={() => navigate('/calendar')} style={{ cursor: 'pointer' }}>
+                        <div className="stat-card-content">
+                            <p className="stat-card-label">Sessions This Month</p>
+                            <p className="stat-card-value">{stats.sessions_this_month}</p>
+                            <div className="stat-card-trend up">
+                                <TrendUp size={14} weight="bold" />
+                                <span>This month</span>
+                            </div>
+                        </div>
+                        <div className="stat-card-icon yellow">
+                            <CalendarCheck size={22} weight="fill" />
                         </div>
                     </div>
-                    <div className="stat-card-icon yellow">
-                        <CalendarCheck size={22} weight="fill" />
-                    </div>
-                </div>
+                )}
 
-                <div className="stat-card" onClick={() => navigate('/notes')} style={{ cursor: 'pointer' }}>
-                    <div className="stat-card-content">
-                        <p className="stat-card-label">Pending Notes</p>
-                        <p className="stat-card-value">{stats.pending_notes}</p>
-                        <div className="stat-card-trend down">
-                            <Clock size={14} weight="fill" />
-                            <span>Needs attention</span>
+                {canAccessClinical && (
+                    <div className="stat-card" onClick={() => navigate('/notes')} style={{ cursor: 'pointer' }}>
+                        <div className="stat-card-content">
+                            <p className="stat-card-label">Pending Notes</p>
+                            <p className="stat-card-value">{stats.pending_notes}</p>
+                            <div className="stat-card-trend down">
+                                <Clock size={14} weight="fill" />
+                                <span>Needs attention</span>
+                            </div>
+                        </div>
+                        <div className="stat-card-icon blue">
+                            <FileText size={22} weight="fill" />
                         </div>
                     </div>
-                    <div className="stat-card-icon blue">
-                        <FileText size={22} weight="fill" />
-                    </div>
-                </div>
+                )}
 
                 {canAccessBilling && (
                     <div className="stat-card" onClick={() => navigate('/billing')} style={{ cursor: 'pointer' }}>
@@ -211,20 +219,26 @@ export default function DashboardPage() {
                 )}
             </div>
 
-            {/* Quick Actions */}
+            {/* Quick Actions — filtered by role */}
             <div className="quick-actions">
-                <button className="quick-action-btn" onClick={() => navigate('/calendar')}>
-                    <CalendarPlus size={20} weight="fill" />
-                    <span>New Appointment</span>
-                </button>
-                <button className="quick-action-btn" onClick={() => navigate('/clients?action=add')}>
-                    <UserPlus size={20} weight="fill" />
-                    <span>Add Client</span>
-                </button>
-                <button className="quick-action-btn" onClick={() => navigate('/notes/new')}>
-                    <NotePencil size={20} weight="fill" />
-                    <span>Create Note</span>
-                </button>
+                {canAccessScheduling && (
+                    <button className="quick-action-btn" onClick={() => navigate('/calendar')}>
+                        <CalendarPlus size={20} weight="fill" />
+                        <span>New Appointment</span>
+                    </button>
+                )}
+                {canAccessScheduling && (
+                    <button className="quick-action-btn" onClick={() => navigate('/clients?action=add')}>
+                        <UserPlus size={20} weight="fill" />
+                        <span>Add Client</span>
+                    </button>
+                )}
+                {canAccessClinical && (
+                    <button className="quick-action-btn" onClick={() => navigate('/notes/new')}>
+                        <NotePencil size={20} weight="fill" />
+                        <span>Create Note</span>
+                    </button>
+                )}
                 {canAccessBilling && (
                     <button className="quick-action-btn" onClick={() => navigate('/billing?tab=claims')}>
                         <PaperPlaneTilt size={20} weight="fill" />

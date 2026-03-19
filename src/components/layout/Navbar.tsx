@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { NavLink, useLocation, useNavigate, Link } from 'react-router-dom'
+import { useAuth } from '../../context'
+import { canAccess } from '../../utils/permissions'
+import type { UserRole } from '../../types'
 import {
     House,
     Users,
@@ -29,12 +32,31 @@ const navigation: NavItem[] = [
     { id: 5, name: 'Billing', href: '/billing', icon: CurrencyDollar },
 ]
 
+const roleLabels: Record<UserRole, string> = {
+    admin: 'Administrator',
+    supervisor: 'Supervisor',
+    clinician: 'Clinician',
+    biller: 'Biller',
+    front_desk: 'Front Desk',
+}
+
 export default function Navbar() {
     const location = useLocation()
     const navigate = useNavigate()
+    const { user, logout } = useAuth()
+    const role = user?.role || 'clinician'
     const isActive = (path: string) => location.pathname.startsWith(path)
     const [showUserMenu, setShowUserMenu] = useState(false)
     const menuRef = useRef<HTMLDivElement>(null)
+
+    const visibleNav = navigation.filter(item => canAccess(role, item.href))
+
+    const initials = user
+        ? `${user.first_name?.[0] || ''}${user.last_name?.[0] || ''}`.toUpperCase()
+        : '??'
+    const displayName = user
+        ? `${user.first_name} ${user.last_name}`
+        : 'Unknown User'
 
     // Close dropdown when clicking outside
     useEffect(() => {
@@ -47,9 +69,13 @@ export default function Navbar() {
         return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [])
 
-    const handleSignOut = () => {
-        localStorage.removeItem('sirena_auth')
+    const handleSignOut = async () => {
         setShowUserMenu(false)
+        try {
+            await logout()
+        } catch {
+            // Even if logout API fails, clear local state
+        }
         navigate('/login')
     }
 
@@ -72,9 +98,9 @@ export default function Navbar() {
                 </div>
             </div>
 
-            {/* Centered Navigation - Premium Style */}
+            {/* Centered Navigation - Premium Style — filtered by role */}
             <div className="hidden md:flex items-center gap-8">
-                {navigation.map((item) => (
+                {visibleNav.map((item) => (
                     <NavLink
                         key={item.id}
                         to={item.href}
@@ -99,21 +125,21 @@ export default function Navbar() {
                     <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
                 </Link>
 
-                {/* User Avatar with Dropdown */}
+                {/* User Avatar with Dropdown — real data from auth context */}
                 <div className="relative" ref={menuRef}>
                     <button
                         onClick={() => setShowUserMenu(!showUserMenu)}
                         className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-cyan)] flex items-center justify-center text-white font-bold text-sm cursor-pointer shadow-md hover:shadow-lg transition-transform hover:-translate-y-0.5"
                     >
-                        JS
+                        {initials}
                     </button>
 
                     {/* Dropdown Menu */}
                     {showUserMenu && (
                         <div className="navbar-dropdown">
                             <div className="navbar-dropdown-header">
-                                <p className="navbar-dropdown-name">Dr. John Smith</p>
-                                <p className="navbar-dropdown-role">Administrator</p>
+                                <p className="navbar-dropdown-name">{displayName}</p>
+                                <p className="navbar-dropdown-role">{roleLabels[role]}</p>
                             </div>
                             <div className="navbar-dropdown-divider"></div>
                             <Link to="/settings" className="navbar-dropdown-item" onClick={() => setShowUserMenu(false)}>

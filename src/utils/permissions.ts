@@ -104,3 +104,46 @@ export function getAllowedRoles(path: string): UserRole[] | undefined {
     const rule = routePermissions.find(r => path === r.path || path.startsWith(r.path + '/'))
     return rule?.roles
 }
+
+// ─── Notification Category → Role Mapping ───────────────────────────────────
+// Each notification category is only relevant to certain roles.
+// This ensures users never see notifications for features they can't access.
+
+type NotificationCategory = 'authorization' | 'billing' | 'appointment' | 'notes' | 'general' | 'activity'
+
+const notificationCategoryRoles: Record<NotificationCategory, UserRole[]> = {
+    authorization: SCHEDULING_ROLES,   // auth_expiring → managed by scheduling/clinical staff
+    billing:       BILLING_ROLES,      // claim_denied, payment_received → billing only
+    appointment:   SCHEDULING_ROLES,   // appointment_reminder → scheduling staff
+    notes:         CLINICAL_ROLES,     // missing_note → clinical staff only
+    general:       ALL_ROLES,          // general → everyone
+    activity:      ALL_ROLES,          // activity feed → everyone
+}
+
+/**
+ * Check if a user with the given role should see a notification category.
+ */
+export function canSeeNotificationCategory(role: UserRole, category: string): boolean {
+    const allowed = notificationCategoryRoles[category as NotificationCategory]
+    if (!allowed) return true // unknown categories visible to all
+    return allowed.includes(role)
+}
+
+/**
+ * Get the list of notification filter tab values visible to a given role.
+ */
+export function getVisibleNotificationFilters(role: UserRole): { value: string; label: string }[] {
+    const allFilters = [
+        { value: 'all', label: 'All' },
+        { value: 'unread', label: 'Unread' },
+        { value: 'authorization', label: 'Authorization' },
+        { value: 'billing', label: 'Billing' },
+        { value: 'appointment', label: 'Appointment' },
+        { value: 'notes', label: 'Notes' },
+        { value: 'activity', label: 'Activity' },
+        { value: 'general', label: 'General' },
+    ]
+    return allFilters.filter(f =>
+        f.value === 'all' || f.value === 'unread' || canSeeNotificationCategory(role, f.value)
+    )
+}

@@ -1,18 +1,20 @@
-import { useState } from 'react'
-import { CaretDown, MapPin } from '@phosphor-icons/react'
+import { useState, useEffect } from 'react'
+import { CaretDown, MapPin, SpinnerGap } from '@phosphor-icons/react'
+import { lookupsApi } from '../../api'
+import type { LocationOption } from '../../api/lookups'
 
 interface Location {
-    id: number
+    id: string
     name: string
     address?: string
     city?: string
     state?: string
-    type?: 'clinic' | 'home' | 'telehealth'
+    is_telehealth?: boolean
 }
 
 interface LocationSelectProps {
-    value: number | string
-    onChange: (locationId: number, location?: Location) => void
+    value: string | number
+    onChange: (locationId: string, location?: Location) => void
     includeAll?: boolean
     allLabel?: string
     placeholder?: string
@@ -21,21 +23,9 @@ interface LocationSelectProps {
     showAddress?: boolean
 }
 
-// Mock locations - in real app, this would come from API
-const mockLocations: Location[] = [
-    { id: 1, name: 'Main Office', address: '123 Healthcare Dr', city: 'Austin', state: 'TX', type: 'clinic' },
-    { id: 2, name: 'North Clinic', address: '456 Wellness Ave', city: 'Round Rock', state: 'TX', type: 'clinic' },
-    { id: 3, name: 'South Branch', address: '789 Therapy Ln', city: 'San Marcos', state: 'TX', type: 'clinic' },
-    { id: 4, name: 'In-Home Services', type: 'home' },
-    { id: 5, name: 'Telehealth', type: 'telehealth' },
-]
-
-const getLocationIcon = (type?: string) => {
-    switch (type) {
-        case 'home': return '🏠'
-        case 'telehealth': return '💻'
-        default: return '🏥'
-    }
+const getLocationIcon = (location: LocationOption) => {
+    if (location.is_telehealth) return '💻'
+    return '🏥'
 }
 
 export default function LocationSelect({
@@ -49,14 +39,38 @@ export default function LocationSelect({
     showAddress = false
 }: LocationSelectProps) {
     const [isOpen, setIsOpen] = useState(false)
+    const [locations, setLocations] = useState<LocationOption[]>([])
+    const [loading, setLoading] = useState(true)
 
-    const selectedLocation = mockLocations.find(l => l.id === Number(value))
+    useEffect(() => {
+        let cancelled = false
+        const fetchLocations = async () => {
+            try {
+                const data = await lookupsApi.getLocations()
+                if (!cancelled) {
+                    setLocations(data)
+                }
+            } catch {
+                if (!cancelled) {
+                    setLocations([])
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false)
+                }
+            }
+        }
+        fetchLocations()
+        return () => { cancelled = true }
+    }, [])
 
-    const handleSelect = (location: Location | null) => {
+    const selectedLocation = locations.find(l => l.id === String(value))
+
+    const handleSelect = (location: LocationOption | null) => {
         if (location) {
             onChange(location.id, location)
         } else {
-            onChange(0, undefined)
+            onChange('', undefined)
         }
         setIsOpen(false)
     }
@@ -67,10 +81,15 @@ export default function LocationSelect({
                 className={`location-select-trigger ${disabled ? 'disabled' : ''}`}
                 onClick={() => !disabled && setIsOpen(!isOpen)}
             >
-                {selectedLocation ? (
+                {loading ? (
+                    <span className="location-select-placeholder">
+                        <SpinnerGap size={16} className="animate-spin" />
+                        Loading locations...
+                    </span>
+                ) : selectedLocation ? (
                     <div className="location-select-value">
                         <span className="location-select-icon-emoji">
-                            {getLocationIcon(selectedLocation.type)}
+                            {getLocationIcon(selectedLocation)}
                         </span>
                         <div className="location-select-info">
                             <span className="location-select-name">{selectedLocation.name}</span>
@@ -81,7 +100,7 @@ export default function LocationSelect({
                             )}
                         </div>
                     </div>
-                ) : value === 0 && includeAll ? (
+                ) : !value && includeAll ? (
                     <span className="location-select-placeholder">
                         <MapPin size={16} />
                         {allLabel}
@@ -95,25 +114,25 @@ export default function LocationSelect({
                 <CaretDown size={16} className="location-select-caret" />
             </div>
 
-            {isOpen && (
+            {isOpen && !loading && (
                 <div className="location-select-dropdown">
                     {includeAll && (
                         <div
-                            className={`location-select-option ${value === 0 ? 'selected' : ''}`}
+                            className={`location-select-option ${!value ? 'selected' : ''}`}
                             onClick={() => handleSelect(null)}
                         >
                             <MapPin size={16} />
                             <span>{allLabel}</span>
                         </div>
                     )}
-                    {mockLocations.map(location => (
+                    {locations.map(location => (
                         <div
                             key={location.id}
-                            className={`location-select-option ${Number(value) === location.id ? 'selected' : ''}`}
+                            className={`location-select-option ${String(value) === location.id ? 'selected' : ''}`}
                             onClick={() => handleSelect(location)}
                         >
                             <span className="location-option-icon">
-                                {getLocationIcon(location.type)}
+                                {getLocationIcon(location)}
                             </span>
                             <div className="location-select-option-info">
                                 <span className="location-select-option-name">{location.name}</span>
@@ -125,6 +144,12 @@ export default function LocationSelect({
                             </div>
                         </div>
                     ))}
+                    {locations.length === 0 && (
+                        <div className="location-select-option" style={{ opacity: 0.5 }}>
+                            <MapPin size={16} />
+                            <span>No locations found</span>
+                        </div>
+                    )}
                 </div>
             )}
 

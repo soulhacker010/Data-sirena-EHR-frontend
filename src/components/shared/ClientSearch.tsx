@@ -1,8 +1,9 @@
-import { useState, useRef, useEffect } from 'react'
-import { MagnifyingGlass, X, User } from '@phosphor-icons/react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { MagnifyingGlass, X, User, SpinnerGap } from '@phosphor-icons/react'
+import { clientsApi } from '../../api'
 
 interface Client {
-    id: number
+    id: string
     name: string
     dob?: string
     insurance?: string
@@ -16,17 +17,12 @@ interface ClientSearchProps {
     required?: boolean
 }
 
-// Mock clients - in real app, this would come from API
-const mockClients: Client[] = [
-    { id: 1, name: 'Sarah Johnson', dob: '03/15/1995', insurance: 'Blue Cross' },
-    { id: 2, name: 'Michael Chen', dob: '08/22/2010', insurance: 'Aetna' },
-    { id: 3, name: 'Emily Davis', dob: '12/03/2008', insurance: 'United' },
-    { id: 4, name: 'James Wilson', dob: '05/18/2012', insurance: 'Cigna' },
-    { id: 5, name: 'Lisa Thompson', dob: '01/30/2015', insurance: 'Medicaid' },
-    { id: 6, name: 'David Brown', dob: '07/11/2009', insurance: 'Blue Cross' },
-    { id: 7, name: 'Maria Garcia', dob: '09/25/2011', insurance: 'Aetna' },
-    { id: 8, name: 'Robert Martinez', dob: '04/08/2007', insurance: 'United' },
-]
+const formatDate = (iso: string): string => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    if (isNaN(d.getTime())) return iso
+    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+}
 
 export default function ClientSearch({
     onSelect,
@@ -38,25 +34,58 @@ export default function ClientSearch({
     const [query, setQuery] = useState('')
     const [isOpen, setIsOpen] = useState(false)
     const [results, setResults] = useState<Client[]>([])
+    const [loading, setLoading] = useState(false)
     const [highlightIndex, setHighlightIndex] = useState(0)
     const wrapperRef = useRef<HTMLDivElement>(null)
     const inputRef = useRef<HTMLInputElement>(null)
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-    // Filter clients based on query
-    useEffect(() => {
-        if (query.length > 0) {
-            const filtered = mockClients.filter(c =>
-                c.name.toLowerCase().includes(query.toLowerCase()) ||
-                c.dob?.includes(query)
-            )
-            setResults(filtered)
+    const searchClients = useCallback(async (searchQuery: string) => {
+        if (searchQuery.length < 2) {
+            setResults([])
+            setIsOpen(false)
+            return
+        }
+
+        setLoading(true)
+        try {
+            const response = await clientsApi.getAll({ search: searchQuery, page_size: 10 })
+            const clients = (response.results || []).map(c => ({
+                id: c.id,
+                name: `${c.first_name} ${c.last_name}`,
+                dob: c.date_of_birth ? formatDate(c.date_of_birth) : undefined,
+                insurance: c.insurance_primary_name || undefined,
+            }))
+            setResults(clients)
             setIsOpen(true)
             setHighlightIndex(0)
+        } catch {
+            setResults([])
+        } finally {
+            setLoading(false)
+        }
+    }, [])
+
+    useEffect(() => {
+        if (debounceRef.current) {
+            clearTimeout(debounceRef.current)
+        }
+
+        if (query.length >= 2) {
+            debounceRef.current = setTimeout(() => {
+                searchClients(query)
+            }, 300)
         } else {
             setResults([])
             setIsOpen(false)
         }
-    }, [query])
+
+        return () => {
+            if (debounceRef.current) {
+                clearTimeout(debounceRef.current)
+            }
+        }
+    }, [query, searchClients])
 
     // Close dropdown on outside click
     useEffect(() => {
@@ -108,7 +137,9 @@ export default function ClientSearch({
                     <div className="client-search-selected-info">
                         <span className="client-search-selected-name">{selectedClient.name}</span>
                         <span className="client-search-selected-details">
-                            DOB: {selectedClient.dob} • {selectedClient.insurance}
+                            {selectedClient.dob && <>DOB: {selectedClient.dob}</>}
+                            {selectedClient.dob && selectedClient.insurance && ' • '}
+                            {selectedClient.insurance}
                         </span>
                     </div>
                     {!disabled && (
@@ -120,7 +151,11 @@ export default function ClientSearch({
             ) : (
                 <>
                     <div className="client-search-input-wrapper">
-                        <MagnifyingGlass size={18} className="client-search-icon" />
+                        {loading ? (
+                            <SpinnerGap size={18} className="client-search-icon animate-spin" />
+                        ) : (
+                            <MagnifyingGlass size={18} className="client-search-icon" />
+                        )}
                         <input
                             ref={inputRef}
                             type="text"
@@ -149,7 +184,9 @@ export default function ClientSearch({
                                     <div className="client-search-option-info">
                                         <span className="client-search-option-name">{client.name}</span>
                                         <span className="client-search-option-details">
-                                            DOB: {client.dob} • {client.insurance}
+                                            {client.dob && <>DOB: {client.dob}</>}
+                                            {client.dob && client.insurance && ' • '}
+                                            {client.insurance}
                                         </span>
                                     </div>
                                 </div>
@@ -157,7 +194,7 @@ export default function ClientSearch({
                         </div>
                     )}
 
-                    {isOpen && query.length > 0 && results.length === 0 && (
+                    {isOpen && !loading && query.length >= 2 && results.length === 0 && (
                         <div className="client-search-dropdown">
                             <div className="client-search-no-results">
                                 <User size={24} />

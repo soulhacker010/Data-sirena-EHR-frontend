@@ -93,8 +93,9 @@ export const billingApi = {
         return data
     },
 
-    resubmitClaim: async (id: string): Promise<Claim> => {
-        const { data } = await apiClient.post<Claim>(`/claims/${id}/submit/`)
+    resubmitClaim: async (id: string, notes?: string): Promise<Claim> => {
+        const body = notes ? { resubmission_notes: notes } : {}
+        const { data } = await apiClient.post<Claim>(`/claims/${id}/submit/`, body)
         return data
     },
 

@@ -1,17 +1,17 @@
-import { useState } from 'react'
-import { CaretDown, User } from '@phosphor-icons/react'
+import { useState, useEffect } from 'react'
+import { CaretDown, User, SpinnerGap } from '@phosphor-icons/react'
+import { lookupsApi } from '../../api'
+import type { ProviderOption } from '../../api/lookups'
 
 interface Provider {
-    id: number
+    id: string
     name: string
     credentials?: string
-    npi?: string
-    specialty?: string
 }
 
 interface ProviderSelectProps {
-    value: number | string
-    onChange: (providerId: number, provider?: Provider) => void
+    value: string | number
+    onChange: (providerId: string, provider?: Provider) => void
     includeAll?: boolean
     allLabel?: string
     placeholder?: string
@@ -19,15 +19,6 @@ interface ProviderSelectProps {
     required?: boolean
     showNPI?: boolean
 }
-
-// Mock providers - in real app, this would come from API
-const mockProviders: Provider[] = [
-    { id: 1, name: 'Dr. Amanda Wilson', credentials: 'BCBA-D', npi: '1234567890', specialty: 'Behavior Analysis' },
-    { id: 2, name: 'Jessica Martinez', credentials: 'BCBA', npi: '2345678901', specialty: 'Autism Services' },
-    { id: 3, name: 'Dr. Robert Kim', credentials: 'BCBA-D', npi: '3456789012', specialty: 'Early Intervention' },
-    { id: 4, name: 'Maria Santos', credentials: 'RBT', npi: '4567890123', specialty: 'Direct Therapy' },
-    { id: 5, name: 'Dr. Sarah Mitchell', credentials: 'BCBA-D', npi: '5678901234', specialty: 'Program Development' },
-]
 
 export default function ProviderSelect({
     value,
@@ -37,17 +28,42 @@ export default function ProviderSelect({
     placeholder = 'Select provider',
     disabled = false,
     required = false,
-    showNPI = false
+    showNPI: _showNPI = false
 }: ProviderSelectProps) {
+    void _showNPI
     const [isOpen, setIsOpen] = useState(false)
+    const [providers, setProviders] = useState<ProviderOption[]>([])
+    const [loading, setLoading] = useState(true)
 
-    const selectedProvider = mockProviders.find(p => p.id === Number(value))
+    useEffect(() => {
+        let cancelled = false
+        const fetchProviders = async () => {
+            try {
+                const data = await lookupsApi.getProviders()
+                if (!cancelled) {
+                    setProviders(data)
+                }
+            } catch {
+                if (!cancelled) {
+                    setProviders([])
+                }
+            } finally {
+                if (!cancelled) {
+                    setLoading(false)
+                }
+            }
+        }
+        fetchProviders()
+        return () => { cancelled = true }
+    }, [])
 
-    const handleSelect = (provider: Provider | null) => {
+    const selectedProvider = providers.find(p => p.id === String(value))
+
+    const handleSelect = (provider: ProviderOption | null) => {
         if (provider) {
             onChange(provider.id, provider)
         } else {
-            onChange(0, undefined)
+            onChange('', undefined)
         }
         setIsOpen(false)
     }
@@ -58,7 +74,12 @@ export default function ProviderSelect({
                 className={`provider-select-trigger ${disabled ? 'disabled' : ''}`}
                 onClick={() => !disabled && setIsOpen(!isOpen)}
             >
-                {selectedProvider ? (
+                {loading ? (
+                    <span className="provider-select-placeholder">
+                        <SpinnerGap size={16} className="animate-spin" />
+                        Loading providers...
+                    </span>
+                ) : selectedProvider ? (
                     <div className="provider-select-value">
                         <div className="provider-select-avatar">
                             <User size={16} weight="fill" />
@@ -70,12 +91,9 @@ export default function ProviderSelect({
                                     <span className="provider-credentials">, {selectedProvider.credentials}</span>
                                 )}
                             </span>
-                            {showNPI && selectedProvider.npi && (
-                                <span className="provider-select-npi">NPI: {selectedProvider.npi}</span>
-                            )}
                         </div>
                     </div>
-                ) : value === 0 && includeAll ? (
+                ) : !value && includeAll ? (
                     <span className="provider-select-placeholder">{allLabel}</span>
                 ) : (
                     <span className="provider-select-placeholder">{placeholder}</span>
@@ -83,20 +101,20 @@ export default function ProviderSelect({
                 <CaretDown size={16} className="provider-select-icon" />
             </div>
 
-            {isOpen && (
+            {isOpen && !loading && (
                 <div className="provider-select-dropdown">
                     {includeAll && (
                         <div
-                            className={`provider-select-option ${value === 0 ? 'selected' : ''}`}
+                            className={`provider-select-option ${!value ? 'selected' : ''}`}
                             onClick={() => handleSelect(null)}
                         >
                             <span>{allLabel}</span>
                         </div>
                     )}
-                    {mockProviders.map(provider => (
+                    {providers.map(provider => (
                         <div
                             key={provider.id}
-                            className={`provider-select-option ${Number(value) === provider.id ? 'selected' : ''}`}
+                            className={`provider-select-option ${String(value) === provider.id ? 'selected' : ''}`}
                             onClick={() => handleSelect(provider)}
                         >
                             <div className="provider-select-option-avatar">
@@ -109,12 +127,15 @@ export default function ProviderSelect({
                                         <span className="provider-credentials">, {provider.credentials}</span>
                                     )}
                                 </span>
-                                {showNPI && provider.npi && (
-                                    <span className="provider-select-option-npi">NPI: {provider.npi}</span>
-                                )}
                             </div>
                         </div>
                     ))}
+                    {providers.length === 0 && (
+                        <div className="provider-select-option" style={{ opacity: 0.5 }}>
+                            <User size={14} />
+                            <span>No providers found</span>
+                        </div>
+                    )}
                 </div>
             )}
 

@@ -17,6 +17,7 @@ export interface UpdateUserPayload {
     first_name?: string
     last_name?: string
     role?: string
+    phone?: string
     is_active?: boolean
     licenses?: string[]
     credentials?: string[]

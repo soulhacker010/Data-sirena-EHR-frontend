@@ -69,6 +69,7 @@ export interface Claim {
     response_data?: Record<string, unknown>
     denial_reason?: string
     resubmission_count: number
+    resubmission_notes?: string
     paid_at?: string
     service_code?: string
     session_date?: string

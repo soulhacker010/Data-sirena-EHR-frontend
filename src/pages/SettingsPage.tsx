@@ -57,14 +57,14 @@ export default function SettingsPage() {
         tax_id: ''
     })
 
-    // Notification preferences (client-side for now)
+    // Notification preferences — loaded from backend
     const [notifications, setNotifications] = useState({
-        emailAppointments: true,
-        emailBilling: true,
-        emailNotes: false,
-        smsReminders: true,
-        authAlerts: true,
-        denialAlerts: true
+        email_appointments: true,
+        email_billing: true,
+        email_notes: false,
+        sms_reminders: true,
+        auth_alerts: true,
+        denial_alerts: true
     })
 
     // Password
@@ -86,7 +86,7 @@ export default function SettingsPage() {
                         firstName: user.first_name || '',
                         lastName: user.last_name || '',
                         email: user.email || '',
-                        phone: '',
+                        phone: user.phone || '',
                         role: user.role || ''
                     })
                 }
@@ -100,6 +100,10 @@ export default function SettingsPage() {
                     contact_email: org.contact_email || '',
                     tax_id: org.tax_id || ''
                 })
+
+                // Notification preferences
+                const prefs = await settingsApi.getNotificationPreferences()
+                setNotifications(prefs)
             } catch (err: any) {
                 toast.error(err?.response?.data?.detail || 'Failed to load settings')
             } finally {
@@ -115,6 +119,7 @@ export default function SettingsPage() {
             await authApi.updateProfile({
                 first_name: profile.firstName,
                 last_name: profile.lastName,
+                phone: profile.phone,
             })
             toast.success('Profile updated successfully')
         } catch (err: any) {
@@ -193,11 +198,21 @@ export default function SettingsPage() {
         }
     }
 
-    const handleSaveNotifications = () => {
-        // Notification prefs stored locally for now
-        setSaved(true)
-        toast.success('Notification preferences saved')
-        setTimeout(() => setSaved(false), 3000)
+    const handleSaveNotifications = async () => {
+        try {
+            setIsSaving(true)
+            await settingsApi.updateNotificationPreferences(notifications)
+            setSaved(true)
+            toast.success('Notification preferences saved')
+            setTimeout(() => setSaved(false), 3000)
+        } catch (err: unknown) {
+            const msg = ((err as Record<string, unknown>)?.response as Record<string, unknown>)?.data
+                ? (((err as Record<string, unknown>).response as Record<string, unknown>).data as Record<string, string>)?.detail || 'Failed to save preferences'
+                : 'Failed to save preferences'
+            toast.error(msg)
+        } finally {
+            setIsSaving(false)
+        }
     }
 
     if (isLoading) {
@@ -384,12 +399,12 @@ export default function SettingsPage() {
 
                             <div className="notification-prefs">
                                 {[
-                                    { key: 'emailAppointments', label: 'Email — Appointment reminders' },
-                                    { key: 'emailBilling', label: 'Email — Billing updates' },
-                                    { key: 'emailNotes', label: 'Email — Note reminders' },
-                                    { key: 'smsReminders', label: 'SMS — Session reminders' },
-                                    { key: 'authAlerts', label: 'Authorization expiration alerts' },
-                                    { key: 'denialAlerts', label: 'Claim denial alerts' },
+                                    { key: 'email_appointments', label: 'Email — Appointment reminders' },
+                                    { key: 'email_billing', label: 'Email — Billing updates' },
+                                    { key: 'email_notes', label: 'Email — Note reminders' },
+                                    { key: 'sms_reminders', label: 'SMS — Session reminders' },
+                                    { key: 'auth_alerts', label: 'Authorization expiration alerts' },
+                                    { key: 'denial_alerts', label: 'Claim denial alerts' },
                                 ].map(pref => (
                                     <label key={pref.key} className="toggle-row">
                                         <span>{pref.label}</span>
@@ -407,8 +422,8 @@ export default function SettingsPage() {
                             </div>
 
                             <div className="form-actions">
-                                <button className="btn-primary" onClick={handleSaveNotifications}>
-                                    Save Preferences
+                                <button className="btn-primary" onClick={handleSaveNotifications} disabled={isSaving}>
+                                    {isSaving ? 'Saving...' : 'Save Preferences'}
                                 </button>
                             </div>
                         </div>

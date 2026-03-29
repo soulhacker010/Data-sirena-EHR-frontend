@@ -47,6 +47,7 @@ export default function Navbar() {
     const role = user?.role || 'clinician'
     const isActive = (path: string) => location.pathname.startsWith(path)
     const [showUserMenu, setShowUserMenu] = useState(false)
+    const [searchQuery, setSearchQuery] = useState('')
     const menuRef = useRef<HTMLDivElement>(null)
 
     const visibleNav = navigation.filter(item => canAccess(role, item.href))
@@ -84,15 +85,23 @@ export default function Navbar() {
             {/* Logo & Search */}
             <div className="flex items-center gap-10">
                 <div className="navbar-logo flex items-center gap-3">
-                    <Butterfly size={32} weight="duotone" className="text-[var(--color-primary)]" />
-                    <span className="font-bold text-xl tracking-tight text-[var(--color-primary-dark)]">SIRENA</span>
+                    <Butterfly size={32} weight="duotone" className="text-primary" />
+                    <span className="font-bold text-xl tracking-tight text-primary-dark">SIRENA</span>
                 </div>
 
-                <div className="navbar-search hidden lg:flex items-center bg-gray-50 border border-gray-200 rounded-full px-4 py-2.5 w-80 focus-within:bg-white focus-within:border-[var(--color-primary)] focus-within:ring-2 focus-within:ring-[var(--color-primary)]/10 transition-all">
+                <div className="navbar-search hidden lg:flex items-center bg-gray-50 border border-gray-200 rounded-full px-4 py-2.5 w-80 focus-within:bg-white focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/10 transition-all">
                     <MagnifyingGlass size={18} weight="bold" className="text-gray-400" />
                     <input
                         type="text"
-                        placeholder="Search clients, notes..."
+                        placeholder="Search clients..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && searchQuery.trim()) {
+                                navigate(`/clients?search=${encodeURIComponent(searchQuery.trim())}`)
+                                setSearchQuery('')
+                            }
+                        }}
                         className="bg-transparent border-none outline-none text-sm text-gray-700 ml-3 w-full placeholder:text-gray-400"
                     />
                 </div>
@@ -105,13 +114,13 @@ export default function Navbar() {
                         key={item.id}
                         to={item.href}
                         className={`text-sm font-bold tracking-wide relative py-1 transition-colors ${isActive(item.href)
-                            ? 'text-[var(--color-primary)]'
-                            : 'text-gray-500 hover:text-[var(--color-primary)]'
+                            ? 'text-primary'
+                            : 'text-gray-500 hover:text-primary'
                             }`}
                     >
                         {item.name}
                         {isActive(item.href) && (
-                            <span className="absolute -bottom-7 left-0 w-full h-1 bg-[var(--color-primary)] rounded-t-sm"></span>
+                            <span className="absolute -bottom-7 left-0 w-full h-1 bg-primary rounded-t-sm"></span>
                         )}
                     </NavLink>
                 ))}
@@ -120,7 +129,7 @@ export default function Navbar() {
             {/* Right Actions */}
             <div className="flex items-center gap-6">
                 {/* Notification Bell - Links to /notifications */}
-                <Link to="/notifications" className="text-gray-400 hover:text-[var(--color-primary)] transition-colors relative">
+                <Link to="/notifications" className="text-gray-400 hover:text-primary transition-colors relative">
                     <Bell size={24} weight="regular" />
                     <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
                 </Link>
@@ -129,7 +138,7 @@ export default function Navbar() {
                 <div className="relative" ref={menuRef}>
                     <button
                         onClick={() => setShowUserMenu(!showUserMenu)}
-                        className="w-10 h-10 rounded-full bg-gradient-to-br from-[var(--color-primary)] to-[var(--color-cyan)] flex items-center justify-center text-white font-bold text-sm cursor-pointer shadow-md hover:shadow-lg transition-transform hover:-translate-y-0.5"
+                        className="w-10 h-10 rounded-full bg-linear-to-br from-primary to-cyan flex items-center justify-center text-white font-bold text-sm cursor-pointer shadow-md hover:shadow-lg transition-transform hover:-translate-y-0.5"
                     >
                         {initials}
                     </button>

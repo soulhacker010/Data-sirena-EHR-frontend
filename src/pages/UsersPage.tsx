@@ -98,7 +98,13 @@ export default function UsersPage() {
         if (!formData.firstName.trim()) errors.firstName = 'First name is required'
         if (!formData.lastName.trim()) errors.lastName = 'Last name is required'
         if (!formData.email.trim()) errors.email = 'Email is required'
-        if (!isEditModalOpen && !formData.password.trim()) errors.password = 'Password is required'
+        if (!isEditModalOpen && !formData.password.trim()) {
+            errors.password = 'Password is required'
+        } else if (!isEditModalOpen && formData.password.length < 8) {
+            errors.password = 'Password must be at least 8 characters'
+        } else if (!isEditModalOpen && !/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*])/.test(formData.password)) {
+            errors.password = 'Must include uppercase, lowercase, number, and special character'
+        }
         if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) errors.email = 'Invalid email format'
         setFormErrors(errors)
         return Object.keys(errors).length === 0
@@ -149,6 +155,7 @@ export default function UsersPage() {
                 first_name: formData.firstName,
                 last_name: formData.lastName,
                 role: formData.role,
+                phone: formData.phone || undefined,
             })
             toast.success(`${formData.firstName} ${formData.lastName} has been updated`)
             setIsEditModalOpen(false)
@@ -473,6 +480,16 @@ export default function UsersPage() {
                             disabled
                         />
                         <p className="form-hint">Email cannot be changed</p>
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Phone</label>
+                        <input
+                            type="tel"
+                            className="form-input"
+                            placeholder="(555) 123-4567"
+                            value={formData.phone}
+                            onChange={(e) => handleFieldChange('phone', e.target.value)}
+                        />
                     </div>
                     <div className="form-group">
                         <label className="form-label">Role *</label>

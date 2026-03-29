@@ -35,6 +35,7 @@ export interface AuthUser {
     first_name: string
     last_name: string
     role: UserRole
+    phone?: string
     organization_id: string
     organization_name: string
 }

@@ -67,10 +67,14 @@ export default function ClientsPage() {
     const [showAddMenu, setShowAddMenu] = useState(false)
     const [isLoading, setIsLoading] = useState(true)
 
-    // Open add modal if URL has ?action=add
+    // Open add modal if URL has ?action=add, seed search from ?search=
     useEffect(() => {
         if (searchParams.get('action') === 'add') {
             setIsAddModalOpen(true)
+        }
+        const urlSearch = searchParams.get('search')
+        if (urlSearch) {
+            setSearchQuery(urlSearch)
         }
     }, [searchParams])
 

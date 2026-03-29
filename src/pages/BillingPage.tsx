@@ -122,6 +122,7 @@ export default function BillingPage() {
     const [batchGenerating, setBatchGenerating] = useState(false)
     const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
     const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null)
+    const [resubmissionNotes, setResubmissionNotes] = useState('')
 
     // Create invoice form
     const [createInvoiceForm, setCreateInvoiceForm] = useState({
@@ -464,7 +465,8 @@ export default function BillingPage() {
         if (isSaving) return
         setIsSaving(true)
         try {
-            await billingApi.resubmitClaim(claim.id)
+            await billingApi.resubmitClaim(claim.id, resubmissionNotes || undefined)
+            setResubmissionNotes('')
             toast.success('Claim resubmitted')
             setIsClaimModalOpen(false)
             fetchClaims()
@@ -1330,7 +1332,7 @@ export default function BillingPage() {
             {/* Claim Detail Modal */}
             <Modal
                 isOpen={isClaimModalOpen}
-                onClose={() => { setIsClaimModalOpen(false); setSelectedClaim(null) }}
+                onClose={() => { setIsClaimModalOpen(false); setSelectedClaim(null); setResubmissionNotes('') }}
                 title={`Claim ${selectedClaim?.claim_number || ''}`}
                 size="lg"
             >
@@ -1395,14 +1397,9 @@ export default function BillingPage() {
                                         placeholder="Describe what was corrected before resubmission..."
                                         className="form-input-basic"
                                         rows={3}
+                                        value={resubmissionNotes}
+                                        onChange={(e) => setResubmissionNotes(e.target.value)}
                                     />
-                                </div>
-                                <div className="form-group">
-                                    <label className="form-label">Supporting Documentation</label>
-                                    <div className="file-upload-zone">
-                                        <DownloadSimple size={24} />
-                                        <span>Drop files here or click to upload</span>
-                                    </div>
                                 </div>
                             </div>
                         )}
@@ -1411,7 +1408,7 @@ export default function BillingPage() {
                             <button
                                 type="button"
                                 className="btn-secondary"
-                                onClick={() => setIsClaimModalOpen(false)}
+                                onClick={() => { setIsClaimModalOpen(false); setResubmissionNotes('') }}
                             >
                                 Close
                             </button>

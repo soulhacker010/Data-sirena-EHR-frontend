@@ -31,7 +31,7 @@ export const authApi = {
         return data
     },
 
-    updateProfile: async (payload: { first_name: string; last_name: string }): Promise<AuthUser> => {
+    updateProfile: async (payload: { first_name: string; last_name: string; phone?: string }): Promise<AuthUser> => {
         const { data } = await apiClient.put<AuthUser>('/auth/me/', payload)
         return data
     },

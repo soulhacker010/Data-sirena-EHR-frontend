@@ -53,6 +53,16 @@ export const notesApi = {
         return data
     },
 
+    lastNote: async (clientId: string): Promise<SessionNote> => {
+        const { data } = await apiClient.get<SessionNote>('/notes/last-note/', { params: { client: clientId } })
+        return data
+    },
+
+    unlock: async (id: string): Promise<SessionNote> => {
+        const { data } = await apiClient.post<SessionNote>(`/notes/${id}/unlock/`)
+        return data
+    },
+
     delete: async (id: string): Promise<void> => {
         await apiClient.delete(`/notes/${id}/`)
     },

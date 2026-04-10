@@ -39,11 +39,14 @@ export interface Appointment {
     start_time: string
     end_time: string
     service_code?: string
+    modifiers?: string
+    place_of_service?: string
     units?: number
     status: AppointmentStatus
     notes?: string
     is_recurring: boolean
     recurrence_pattern?: RecurrencePattern
+    series_id?: string
     created_at: string
     updated_at: string
 }
@@ -56,6 +59,8 @@ export interface CreateAppointmentPayload {
     start_time: string
     end_time: string
     service_code?: string
+    modifiers?: string
+    place_of_service?: string
     units?: number
     notes?: string
     is_recurring?: boolean
@@ -72,4 +77,6 @@ export interface AppointmentFilters {
     provider_id?: string
     client_id?: string
     status?: AppointmentStatus
+    service_code?: string
+    location_id?: string
 }

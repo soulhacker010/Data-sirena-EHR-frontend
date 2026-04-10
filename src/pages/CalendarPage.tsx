@@ -3,7 +3,8 @@ import toast from 'react-hot-toast'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { PageSkeleton } from '../components/ui'
-import { appointmentsApi, clientsApi, usersApi, getApiErrorMessage } from '../api'
+import { appointmentsApi, clientsApi, usersApi, billingApi, getApiErrorMessage } from '../api'
+import type { CPTSuggestion } from '../api/billing'
 import { useAuth } from '../context'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
@@ -28,23 +29,54 @@ import { Modal, ConfirmDialog } from '../components/ui'
 
 // CPT Codes (static reference)
 const cptCodes = [
-    { code: '97151', description: 'Behavior Assessment', defaultUnits: 4 },
-    { code: '97153', description: 'Adaptive Behavior Treatment', defaultUnits: 8 },
-    { code: '97155', description: 'Behavior Treatment with Modification', defaultUnits: 4 },
-    { code: '97156', description: 'Family Adaptive Behavior Treatment', defaultUnits: 4 },
-    { code: '97157', description: 'Multiple-Family Group', defaultUnits: 4 },
-    { code: '97158', description: 'Group Adaptive Behavior Treatment', defaultUnits: 4 },
+    { code: '90834', description: 'Psychotherapy 45 min', defaultUnits: 1, color: '#6366F1' },
+    { code: '90837', description: 'Psychotherapy 60 min', defaultUnits: 1, color: '#8B5CF6' },
+    { code: '90847', description: 'Family Therapy w/ Patient', defaultUnits: 1, color: '#EC4899' },
+    { code: '90846', description: 'Family Therapy w/o Patient', defaultUnits: 1, color: '#F472B6' },
+    { code: '90791', description: 'Psychiatric Diagnostic Eval', defaultUnits: 1, color: '#14B8A6' },
+    { code: '97151', description: 'Behavior Assessment', defaultUnits: 4, color: '#F59E0B' },
+    { code: '97153', description: 'Adaptive Behavior Treatment', defaultUnits: 8, color: '#EF4444' },
+    { code: '97155', description: 'Behavior Treatment w/ Modification', defaultUnits: 4, color: '#F97316' },
+    { code: '97156', description: 'Family Adaptive Behavior Treatment', defaultUnits: 4, color: '#10B981' },
+    { code: '97157', description: 'Multiple-Family Group', defaultUnits: 4, color: '#06B6D4' },
+    { code: '97158', description: 'Group Adaptive Behavior Treatment', defaultUnits: 4, color: '#0EA5E9' },
 ]
 
-// Status color mapping
-const getStatusColor = (status: string) => {
-    switch (status) {
-        case 'scheduled': return '#0D9488'
-        case 'attended': return '#059669'
-        case 'completed': return '#059669'
-        case 'cancelled': return '#DC2626'
-        case 'no_show': return '#D97706'
-        default: return '#0D9488'
+// POS codes for BUILD 6.3
+const posCodes = [
+    { code: '11', description: 'Office' },
+    { code: '02', description: 'Telehealth' },
+    { code: '12', description: 'Home' },
+    { code: '03', description: 'School' },
+    { code: '04', description: 'Homeless Shelter' },
+    { code: '15', description: 'Mobile Unit' },
+    { code: '20', description: 'Urgent Care' },
+    { code: '21', description: 'Inpatient Hospital' },
+    { code: '22', description: 'Outpatient Hospital' },
+    { code: '23', description: 'Emergency Room' },
+    { code: '31', description: 'Skilled Nursing' },
+    { code: '32', description: 'Nursing Facility' },
+    { code: '49', description: 'Independent Clinic' },
+    { code: '50', description: 'FQHC' },
+    { code: '51', description: 'Psychiatric Facility' },
+    { code: '53', description: 'Community Mental Health' },
+    { code: '99', description: 'Other' },
+]
+
+// Service type → color (5.1)
+const getServiceColor = (serviceCode?: string): string => {
+    const match = cptCodes.find(c => c.code === serviceCode)
+    return match?.color || '#6B7280'
+}
+
+// Combined color: service type base color + status-based style
+const getEventColor = (apt: Appointment): { bg: string; border: string; opacity: number } => {
+    const base = getServiceColor(apt.service_code)
+    switch (apt.status) {
+        case 'cancelled': return { bg: '#E5E7EB', border: '#9CA3AF', opacity: 0.5 }
+        case 'no_show': return { bg: base, border: '#D97706', opacity: 0.6 }
+        case 'attended': return { bg: base, border: base, opacity: 0.85 }
+        default: return { bg: base, border: base, opacity: 1 }
     }
 }
 
@@ -69,22 +101,34 @@ export default function CalendarPage() {
     const [clientsList, setClientsList] = useState<Client[]>([])
     const [providersList, setProvidersList] = useState<User[]>([])
     const [currentView, setCurrentView] = useState<'dayGridMonth' | 'timeGridWeek' | 'timeGridDay'>('timeGridWeek')
-    const [providerFilter, setProviderFilter] = useState('')
     const [calendarTitle, setCalendarTitle] = useState('')
+
+    // 5.2 Filters — provider, service type, status
+    const [providerFilter, setProviderFilter] = useState('')
+    const [serviceFilter, setServiceFilter] = useState('')
+    const [statusFilter, setStatusFilter] = useState('')
+    const [showFilters, setShowFilters] = useState(false)
 
     // Modal states
     const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false)
     const [isViewModalOpen, setIsViewModalOpen] = useState(false)
     const [isEditMode, setIsEditMode] = useState(false)
     const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
+    const [isCancelSeriesDialogOpen, setIsCancelSeriesDialogOpen] = useState(false)
     const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
     const [isSaving, setIsSaving] = useState(false)
+    
+    // BUILD 6.1: CPT code suggestions
+    const [cptSuggestions, setCptSuggestions] = useState<CPTSuggestion[]>([])
+    const [loadingSuggestions, setLoadingSuggestions] = useState(false)
 
     // New appointment form
     const [formData, setFormData] = useState({
         clientId: '',
         providerId: '',
         serviceCode: '97153',
+        modifiers: '',
+        placeOfService: '11',
         units: 8,
         date: '',
         startTime: '09:00',
@@ -92,7 +136,8 @@ export default function CalendarPage() {
         notes: '',
         isRecurring: false,
         recurringPattern: 'weekly' as 'daily' | 'weekly' | 'biweekly' | 'monthly',
-        recurringEndDate: ''
+        recurringEndDate: '',
+        isTelehealth: false
     })
 
     // Get date range from calendar view for fetching
@@ -124,12 +169,14 @@ export default function CalendarPage() {
                 end_date: range.end_date,
             }
             if (providerFilter) filters.provider_id = providerFilter
+            if (serviceFilter) filters.service_code = serviceFilter
+            if (statusFilter) filters.status = statusFilter as AppointmentFilters['status']
             const data = await appointmentsApi.getAll(filters)
             setAppointments(data)
         } catch (err: any) {
             toast.error(getApiErrorMessage(err, 'Failed to load appointments'))
         }
-    }, [getDateRange, providerFilter])
+    }, [getDateRange, providerFilter, serviceFilter, statusFilter])
 
     // Initial data load
     useEffect(() => {
@@ -144,10 +191,12 @@ export default function CalendarPage() {
                 setClientsList(clientsRes.results)
                 setProvidersList(providersRes.results)
 
-                // Auto-select the logged-in user as the default provider
+                // 5.5 "My Schedule" — default provider filter + form to logged-in user
                 if (user?.id && providersRes.results.some((p: User) => p.id === user.id)) {
+                    setProviderFilter(user.id)
                     setFormData(prev => ({ ...prev, providerId: user.id }))
                 } else if (providersRes.results.length === 1) {
+                    setProviderFilter(providersRes.results[0].id)
                     setFormData(prev => ({ ...prev, providerId: providersRes.results[0].id }))
                 }
             } catch (err: any) {
@@ -186,16 +235,104 @@ export default function CalendarPage() {
         updateTitle()
     }, [currentView])
 
-    // Convert appointments to FullCalendar events
-    const calendarEvents = appointments.map(apt => ({
-        id: apt.id,
-        title: `${aptClientName(apt)} - ${apt.service_code || 'Session'}`,
-        start: apt.start_time,
-        end: apt.end_time,
-        backgroundColor: getStatusColor(apt.status),
-        borderColor: getStatusColor(apt.status),
-        extendedProps: apt
-    }))
+    // BUILD 6.1: Fetch CPT suggestions when duration or provider changes
+    useEffect(() => {
+        const fetchSuggestions = async () => {
+            if (!formData.startTime || !formData.endTime || !isScheduleModalOpen) return
+            
+            // Calculate duration in minutes
+            const start = new Date(`2000-01-01T${formData.startTime}`)
+            const end = new Date(`2000-01-01T${formData.endTime}`)
+            const duration = Math.round((end.getTime() - start.getTime()) / 60000)
+            
+            if (duration <= 0) return
+            
+            setLoadingSuggestions(true)
+            try {
+                // Get provider specialty if available
+                const provider = providersList.find(p => p.id === formData.providerId)
+                const specialty = provider?.profile?.specialty
+                
+                const suggestions = await billingApi.getCPTSuggestions({
+                    specialty,
+                    duration,
+                    is_initial: !isEditMode && clientsList.find(c => c.id === formData.clientId)?.is_new_client
+                })
+                setCptSuggestions(suggestions)
+                
+                // Auto-select first suggestion if no code selected
+                if (!formData.serviceCode && suggestions.length > 0) {
+                    setFormData(prev => ({
+                        ...prev,
+                        serviceCode: suggestions[0].code,
+                        units: suggestions[0].typical_units
+                    }))
+                }
+            } catch (err) {
+                console.error('Failed to fetch CPT suggestions:', err)
+                setCptSuggestions([])
+            } finally {
+                setLoadingSuggestions(false)
+            }
+        }
+        
+        fetchSuggestions()
+    }, [formData.startTime, formData.endTime, formData.providerId, isScheduleModalOpen])
+
+    // BUILD 6.2: Auto-apply modifiers when CPT code or telehealth changes
+    useEffect(() => {
+        const fetchModifiers = async () => {
+            if (!formData.serviceCode || !isScheduleModalOpen) return
+            
+            try {
+                // Get provider info for specialty
+                const provider = providersList.find(p => p.id === formData.providerId)
+                const providerType = provider?.profile?.provider_type
+                
+                const result = await billingApi.getModifierSuggestions({
+                    code: formData.serviceCode,
+                    is_telehealth: formData.isTelehealth,
+                    provider_type: providerType,
+                })
+                
+                if (result.modifiers.length > 0) {
+                    setFormData(prev => ({
+                        ...prev,
+                        modifiers: result.modifiers.join(', ')
+                    }))
+                }
+            } catch (err) {
+                console.error('Failed to fetch modifier suggestions:', err)
+            }
+        }
+        
+        fetchModifiers()
+    }, [formData.serviceCode, formData.isTelehealth, formData.providerId, isScheduleModalOpen])
+
+    // BUILD 6.3: Auto-update POS code when telehealth changes
+    useEffect(() => {
+        if (formData.isTelehealth) {
+            setFormData(prev => ({ ...prev, placeOfService: '02' }))
+        } else if (formData.placeOfService === '02') {
+            setFormData(prev => ({ ...prev, placeOfService: '11' }))
+        }
+    }, [formData.isTelehealth])
+
+    // Convert appointments to FullCalendar events (5.1 color coding)
+    const calendarEvents = appointments.map(apt => {
+        const colors = getEventColor(apt)
+        return {
+            id: apt.id,
+            title: `${aptClientName(apt)} — ${apt.service_code || 'Session'}`,
+            start: apt.start_time,
+            end: apt.end_time,
+            backgroundColor: colors.bg,
+            borderColor: colors.border,
+            textColor: apt.status === 'cancelled' ? '#6B7280' : '#fff',
+            classNames: apt.status === 'cancelled' ? ['event-cancelled'] : [],
+            extendedProps: apt,
+        }
+    })
 
     // Navigate calendar
     const goToToday = () => {
@@ -230,6 +367,8 @@ export default function CalendarPage() {
             clientId: '',
             providerId: '',
             serviceCode: '97153',
+            modifiers: '',
+            placeOfService: '11',
             units: 8,
             date: selectInfo.startStr.split('T')[0],
             startTime: selectInfo.start.toTimeString().slice(0, 5),
@@ -237,7 +376,8 @@ export default function CalendarPage() {
             notes: '',
             isRecurring: false,
             recurringPattern: 'weekly',
-            recurringEndDate: ''
+            recurringEndDate: '',
+            isTelehealth: false
         })
         setIsScheduleModalOpen(true)
     }
@@ -282,6 +422,8 @@ export default function CalendarPage() {
             clientId: '',
             providerId: '',
             serviceCode: '97153',
+            modifiers: '',
+            placeOfService: '11',
             units: 8,
             date: now.toISOString().split('T')[0],
             startTime: '09:00',
@@ -289,7 +431,8 @@ export default function CalendarPage() {
             notes: '',
             isRecurring: false,
             recurringPattern: 'weekly',
-            recurringEndDate: ''
+            recurringEndDate: '',
+            isTelehealth: false
         })
         setIsScheduleModalOpen(true)
     }
@@ -302,6 +445,8 @@ export default function CalendarPage() {
             clientId: selectedAppointment.client.id,
             providerId: selectedAppointment.provider.id,
             serviceCode: selectedAppointment.service_code || '97153',
+            modifiers: selectedAppointment.modifiers || '',
+            placeOfService: selectedAppointment.place_of_service || '11',
             units: selectedAppointment.units || 8,
             date: selectedAppointment.start_time.split('T')[0],
             startTime: new Date(selectedAppointment.start_time).toTimeString().slice(0, 5),
@@ -309,7 +454,8 @@ export default function CalendarPage() {
             notes: selectedAppointment.notes || '',
             isRecurring: selectedAppointment.is_recurring,
             recurringPattern: selectedAppointment.recurrence_pattern?.frequency || 'weekly',
-            recurringEndDate: selectedAppointment.recurrence_pattern?.end_date || ''
+            recurringEndDate: selectedAppointment.recurrence_pattern?.end_date || '',
+            isTelehealth: selectedAppointment.modifiers?.includes('-95') || false
         })
         setIsViewModalOpen(false)
         setIsScheduleModalOpen(true)
@@ -319,6 +465,28 @@ export default function CalendarPage() {
     const handleCancelClick = () => {
         setIsViewModalOpen(false)
         setIsCancelDialogOpen(true)
+    }
+
+    // Handle cancel entire recurring series (5.3)
+    const handleCancelSeriesClick = () => {
+        setIsViewModalOpen(false)
+        setIsCancelSeriesDialogOpen(true)
+    }
+
+    const handleConfirmCancelSeries = async () => {
+        if (isSaving || !selectedAppointment) return
+        setIsSaving(true)
+        try {
+            const result = await appointmentsApi.cancelSeries(selectedAppointment.id)
+            toast.success(`${result.cancelled} future appointment(s) cancelled`)
+            fetchAppointments()
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to cancel series'))
+        } finally {
+            setIsSaving(false)
+            setIsCancelSeriesDialogOpen(false)
+            setSelectedAppointment(null)
+        }
     }
 
     // Confirm cancel appointment
@@ -373,12 +541,23 @@ export default function CalendarPage() {
 
     // Handle CPT code change - auto-update units
     const handleCptChange = (code: string) => {
-        const cpt = cptCodes.find(c => c.code === code)
-        setFormData(prev => ({
-            ...prev,
-            serviceCode: code,
-            units: cpt?.defaultUnits || prev.units
-        }))
+        // First check suggestions (they have priority)
+        const suggestion = cptSuggestions.find(s => s.code === code)
+        if (suggestion) {
+            setFormData(prev => ({
+                ...prev,
+                serviceCode: code,
+                units: suggestion.typical_units || prev.units
+            }))
+        } else {
+            // Fall back to static list
+            const cpt = cptCodes.find(c => c.code === code)
+            setFormData(prev => ({
+                ...prev,
+                serviceCode: code,
+                units: cpt?.defaultUnits || prev.units
+            }))
+        }
     }
 
     // Handle schedule submit
@@ -410,8 +589,10 @@ export default function CalendarPage() {
             start_time: `${formData.date}T${formData.startTime}:00`,
             end_time: `${formData.date}T${formData.endTime}:00`,
             service_code: formData.serviceCode,
+            modifiers: formData.modifiers,
+            place_of_service: formData.placeOfService,
             units: formData.units,
-            notes: formData.notes || undefined,
+            notes: formData.notes,
             is_recurring: formData.isRecurring,
             recurrence_pattern: formData.isRecurring ? {
                 frequency: formData.recurringPattern,
@@ -510,9 +691,8 @@ export default function CalendarPage() {
                         </button>
                     </div>
 
-                    {/* Provider Filter */}
+                    {/* Provider Filter (always visible — 5.5 My Schedule) */}
                     <div className="filter-group">
-                        <FunnelSimple size={18} weight="regular" />
                         <select
                             value={providerFilter}
                             onChange={(e) => setProviderFilter(e.target.value)}
@@ -525,7 +705,60 @@ export default function CalendarPage() {
                         </select>
                         <CaretDown size={14} weight="bold" className="filter-caret" />
                     </div>
+
+                    {/* Filter toggle (5.2) */}
+                    <button
+                        className={`btn-icon ${showFilters || serviceFilter || statusFilter ? 'active' : ''}`}
+                        onClick={() => setShowFilters(!showFilters)}
+                        title="More filters"
+                    >
+                        <FunnelSimple size={20} weight={showFilters || serviceFilter || statusFilter ? 'fill' : 'regular'} />
+                    </button>
                 </div>
+            </div>
+
+            {/* 5.2 Extended filter bar */}
+            {showFilters && (
+                <div className="calendar-filter-bar">
+                    <div className="filter-group">
+                        <label className="filter-label">Service Type</label>
+                        <select
+                            value={serviceFilter}
+                            onChange={(e) => setServiceFilter(e.target.value)}
+                            className="filter-select"
+                        >
+                            <option value="">All Types</option>
+                            {cptCodes.map(c => (
+                                <option key={c.code} value={c.code}>
+                                    {c.code} — {c.description}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="filter-group">
+                        <label className="filter-label">Status</label>
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            className="filter-select"
+                        >
+                            <option value="">All Statuses</option>
+                            <option value="scheduled">Scheduled</option>
+                            <option value="attended">Completed</option>
+                            <option value="cancelled">Cancelled</option>
+                            <option value="no_show">No-show</option>
+                        </select>
+                    </div>
+                    {(serviceFilter || statusFilter) && (
+                        <button
+                            className="btn-text-sm"
+                            onClick={() => { setServiceFilter(''); setStatusFilter('') }}
+                        >
+                            Clear filters
+                        </button>
+                    )}
+                </div>
+            )}
             </div>
 
             {/* Calendar */}
@@ -558,23 +791,21 @@ export default function CalendarPage() {
                 />
             </div>
 
-            {/* Status Legend */}
+            {/* Service Type Legend (5.1) */}
             <div className="calendar-legend">
+                {cptCodes.slice(0, 6).map(c => (
+                    <span key={c.code} className="legend-item">
+                        <span className="legend-dot" style={{ background: c.color }}></span>
+                        {c.code}
+                    </span>
+                ))}
                 <span className="legend-item">
-                    <span className="legend-dot" style={{ background: '#0D9488' }}></span>
-                    Scheduled
-                </span>
-                <span className="legend-item">
-                    <span className="legend-dot" style={{ background: '#059669' }}></span>
-                    Completed
+                    <span className="legend-dot" style={{ background: '#E5E7EB', border: '2px solid #9CA3AF' }}></span>
+                    Cancelled
                 </span>
                 <span className="legend-item">
                     <span className="legend-dot" style={{ background: '#D97706' }}></span>
                     No-show
-                </span>
-                <span className="legend-item">
-                    <span className="legend-dot" style={{ background: '#DC2626' }}></span>
-                    Cancelled
                 </span>
             </div>
 
@@ -623,16 +854,32 @@ export default function CalendarPage() {
 
                     <div className="form-row-3">
                         <div className="form-group">
-                            <label className="form-label">CPT Code *</label>
+                            <label className="form-label">
+                                CPT Code * 
+                                {loadingSuggestions && <span className="text-sm text-gray-500 ml-2">Loading suggestions...</span>}
+                            </label>
                             <select
                                 value={formData.serviceCode}
                                 onChange={(e) => handleCptChange(e.target.value)}
                                 className="form-input-basic"
                                 required
                             >
-                                {cptCodes.map(c => (
-                                    <option key={c.code} value={c.code}>{c.code} - {c.description}</option>
+                                {/* Show suggestions if available, otherwise show all codes */}
+                                {(cptSuggestions.length > 0 ? cptSuggestions : cptCodes).map(c => (
+                                    <option key={c.code} value={c.code}>
+                                        {c.code} - {c.description}
+                                        {cptSuggestions.length > 0 && c.duration_min && c.duration_max && 
+                                            ` (${c.duration_min}-${c.duration_max} min)`
+                                        }
+                                    </option>
                                 ))}
+                                {cptSuggestions.length > 0 && (
+                                    <optgroup label="All codes">
+                                        {cptCodes.filter(c => !cptSuggestions.find(s => s.code === c.code)).map(c => (
+                                            <option key={c.code} value={c.code}>{c.code} - {c.description}</option>
+                                        ))}
+                                    </optgroup>
+                                )}
                             </select>
                         </div>
 
@@ -682,6 +929,44 @@ export default function CalendarPage() {
                                 required
                             />
                         </div>
+                    </div>
+
+                    <div className="form-row-2">
+                        <div className="form-group">
+                            <label className="form-label">Modifiers</label>
+                            <input
+                                type="text"
+                                value={formData.modifiers}
+                                onChange={(e) => setFormData(prev => ({ ...prev, modifiers: e.target.value }))}
+                                className="form-input-basic"
+                                placeholder="e.g., -95, GO"
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label className="checkbox-label" style={{ marginTop: '1.75rem' }}>
+                                <input
+                                    type="checkbox"
+                                    checked={formData.isTelehealth}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, isTelehealth: e.target.checked }))}
+                                />
+                                Telehealth Session
+                            </label>
+                        </div>
+                    </div>
+
+                    <div className="form-group">
+                        <label className="form-label">Place of Service</label>
+                        <select
+                            value={formData.placeOfService}
+                            onChange={(e) => setFormData(prev => ({ ...prev, placeOfService: e.target.value }))}
+                            className="form-input-basic"
+                        >
+                            {posCodes.map(pos => (
+                                <option key={pos.code} value={pos.code}>
+                                    {pos.code} - {pos.description}
+                                </option>
+                            ))}
+                        </select>
                     </div>
 
                     {/* Recurring Appointment */}
@@ -849,6 +1134,17 @@ export default function CalendarPage() {
                             </span>
                         </div>
 
+                        {/* Recurring badge (5.3) */}
+                        {selectedAppointment.is_recurring && (
+                            <div className="detail-row">
+                                <span className="detail-label">Recurring</span>
+                                <span className="detail-value" style={{ display: 'flex', alignItems: 'center', gap: '0.375rem' }}>
+                                    <ArrowsClockwise size={16} />
+                                    {selectedAppointment.recurrence_pattern?.frequency || 'Yes'}
+                                </span>
+                            </div>
+                        )}
+
                         <div className="appointment-actions">
                             {selectedAppointment.status === 'scheduled' && (
                                 <>
@@ -856,6 +1152,11 @@ export default function CalendarPage() {
                                     <button className="btn-secondary" onClick={handleReschedule}>Reschedule</button>
                                     <button className="btn-secondary" onClick={handleMarkNoShow}>No-Show</button>
                                     <button className="btn-danger-outline" onClick={handleCancelClick}>Cancel</button>
+                                    {selectedAppointment.is_recurring && selectedAppointment.series_id && (
+                                        <button className="btn-danger-outline" onClick={handleCancelSeriesClick}>
+                                            Cancel Series
+                                        </button>
+                                    )}
                                 </>
                             )}
                             {(selectedAppointment.status === 'attended') && (
@@ -889,6 +1190,23 @@ export default function CalendarPage() {
                     : ''
                 }
                 confirmLabel="Cancel Appointment"
+                variant="danger"
+            />
+
+            {/* Cancel Series Confirmation Dialog (5.3) */}
+            <ConfirmDialog
+                isOpen={isCancelSeriesDialogOpen}
+                onClose={() => {
+                    setIsCancelSeriesDialogOpen(false)
+                    setSelectedAppointment(null)
+                }}
+                onConfirm={handleConfirmCancelSeries}
+                title="Cancel Recurring Series"
+                message={selectedAppointment
+                    ? `This will cancel ALL future scheduled appointments in this recurring series for ${aptClientName(selectedAppointment)}. Past and completed sessions will not be affected.`
+                    : ''
+                }
+                confirmLabel="Cancel All Future"
                 variant="danger"
             />
         </DashboardLayout>

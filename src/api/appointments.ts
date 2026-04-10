@@ -36,4 +36,9 @@ export const appointmentsApi = {
         const { data } = await apiClient.post<Appointment>(`/appointments/${id}/status/`, { status })
         return data
     },
+
+    cancelSeries: async (id: string): Promise<{ cancelled: number }> => {
+        const { data } = await apiClient.post<{ cancelled: number }>(`/appointments/${id}/cancel-series/`)
+        return data
+    },
 }

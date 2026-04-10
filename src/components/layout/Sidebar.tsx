@@ -6,6 +6,7 @@ import {
     Users,
     CalendarBlank,
     Notebook,
+    ClipboardText,
     CurrencyDollar,
     ChartBar,
     Bell,
@@ -29,6 +30,8 @@ const mainMenu: NavItem[] = [
     { id: 2, name: 'Clients', href: '/clients', icon: Users },
     { id: 3, name: 'Calendar', href: '/calendar', icon: CalendarBlank },
     { id: 4, name: 'Session Notes', href: '/notes', icon: Notebook },
+    { id: 11, name: 'Intakes', href: '/intakes', icon: ClipboardText },
+    { id: 12, name: 'Treatment Plans', href: '/treatment-plans', icon: ClipboardText },
     { id: 5, name: 'Billing', href: '/billing', icon: CurrencyDollar },
     { id: 6, name: 'Reports', href: '/reports', icon: ChartBar },
 ]

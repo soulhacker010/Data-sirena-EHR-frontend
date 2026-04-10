@@ -22,7 +22,8 @@ import {
     CloudCheck,
     Spinner,
     Eraser,
-    UserPlus
+    UserPlus,
+    LockOpen
 } from '@phosphor-icons/react'
 
 // Note templates (static reference data)
@@ -60,6 +61,7 @@ export default function SessionNotesPage() {
     const [statusFilter, setStatusFilter] = useState('all')
     const [providerFilter, setProviderFilter] = useState('')
     const [clientFilter, setClientFilter] = useState('')
+    const [serviceCodeFilter, setServiceCodeFilter] = useState('')
     const [dateFrom, setDateFrom] = useState('')
     const [dateTo, setDateTo] = useState('')
 
@@ -105,6 +107,7 @@ export default function SessionNotesPage() {
             if (statusFilter !== 'all') params.status = statusFilter
             if (providerFilter) params.provider_id = providerFilter
             if (clientFilter) params.client_id = clientFilter
+            if (serviceCodeFilter) params.service_code = serviceCodeFilter
             if (dateFrom) params.start_date = dateFrom
             if (dateTo) params.end_date = dateTo
             const response = await notesApi.getAll(params)
@@ -113,7 +116,7 @@ export default function SessionNotesPage() {
         } catch (err: any) {
             toast.error(getApiErrorMessage(err, 'Failed to load notes'))
         }
-    }, [statusFilter, providerFilter, clientFilter, dateFrom, dateTo])
+    }, [statusFilter, providerFilter, clientFilter, serviceCodeFilter, dateFrom, dateTo])
 
     // Initial data load
     useEffect(() => {
@@ -407,6 +410,22 @@ export default function SessionNotesPage() {
         }
     }
 
+    const handleUnlockNote = async (note: SessionNote) => {
+        if (isSaving) return
+        setIsSaving(true)
+        try {
+            await notesApi.unlock(note.id)
+            toast.success('Note unlocked for revision')
+            fetchNotes()
+            setIsViewModalOpen(false)
+            setSelectedNote(null)
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to unlock note'))
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
     const handleRequestCoSign = async () => {
         if (isSaving) return
         if (!selectedNote || !coSignProviderId) return
@@ -495,6 +514,14 @@ export default function SessionNotesPage() {
                     setSelectedNote(note)
                     handleSignClick('cosign')
                 }
+            })
+        }
+
+        if (note.is_locked && user?.role === 'admin') {
+            actions.push({
+                label: 'Unlock Note',
+                icon: <LockOpen size={16} weight="regular" />,
+                onClick: () => handleUnlockNote(note)
             })
         }
 
@@ -588,6 +615,29 @@ export default function SessionNotesPage() {
                     <CaretDown size={14} weight="bold" className="filter-caret" />
                 </div>
 
+                {/* BUILD 7.1: Service type filter */}
+                <div className="filter-group">
+                    <select
+                        value={serviceCodeFilter}
+                        onChange={(e) => setServiceCodeFilter(e.target.value)}
+                        className="filter-select"
+                    >
+                        <option value="">All Services</option>
+                        <option value="90834">90834 — Psychotherapy 45 min</option>
+                        <option value="90837">90837 — Psychotherapy 60 min</option>
+                        <option value="90847">90847 — Family Therapy w/ Patient</option>
+                        <option value="90846">90846 — Family Therapy w/o Patient</option>
+                        <option value="90791">90791 — Psychiatric Diagnostic Eval</option>
+                        <option value="97151">97151 — Behavior Assessment</option>
+                        <option value="97153">97153 — Adaptive Behavior Treatment</option>
+                        <option value="97155">97155 — Behavior Treatment w/ Modification</option>
+                        <option value="97156">97156 — Family Adaptive Behavior</option>
+                        <option value="97157">97157 — Multiple-Family Group</option>
+                        <option value="97158">97158 — Group Adaptive Behavior</option>
+                    </select>
+                    <CaretDown size={14} weight="bold" className="filter-caret" />
+                </div>
+
                 <div className="filter-group date-range">
                     <CalendarBlank size={18} weight="regular" />
                     <input
@@ -663,10 +713,10 @@ export default function SessionNotesPage() {
 
                 {filteredNotes.length === 0 && (
                     <EmptyState
-                        variant={searchQuery || statusFilter !== 'all' ? 'no-results' : 'no-data'}
-                        title={searchQuery || statusFilter !== 'all' ? 'No notes found' : 'No session notes yet'}
-                        description={searchQuery || statusFilter !== 'all' ? 'Try adjusting your filters' : 'Create your first session note to get started'}
-                        actionLabel={!searchQuery && statusFilter === 'all' ? 'New Note' : undefined}
+                        variant={searchQuery || statusFilter !== 'all' || serviceCodeFilter ? 'no-results' : 'no-data'}
+                        title={searchQuery || statusFilter !== 'all' || serviceCodeFilter ? 'No notes found' : 'No session notes yet'}
+                        description={searchQuery || statusFilter !== 'all' || serviceCodeFilter ? 'Try adjusting your filters' : 'Create your first session note to get started'}
+                        actionLabel={!searchQuery && statusFilter === 'all' && !serviceCodeFilter ? 'New Note' : undefined}
                         onAction={!searchQuery && statusFilter === 'all' ? handleNewNote : undefined}
                     />
                 )}
@@ -803,6 +853,12 @@ export default function SessionNotesPage() {
                                             Request Co-Sign
                                         </button>
                                     ) : null}
+                                    {selectedNote.is_locked && user?.role === 'admin' && (
+                                        <button className="btn-danger-outline" onClick={() => handleUnlockNote(selectedNote)}>
+                                            <LockOpen size={16} weight="bold" />
+                                            Unlock for Revision
+                                        </button>
+                                    )}
                                     <button className="btn-secondary" onClick={() => {
                                         const nd = selectedNote.note_data || {}
                                         const content = `SESSION NOTE\n============\nClient: ${selectedNote.client_name}\nDate: ${selectedNote.session_date}\nProvider: ${selectedNote.provider_name}\nCPT: ${selectedNote.service_code}\nStatus: ${selectedNote.status}\n\nObjectives: ${nd.objectives || ''}\nInterventions: ${nd.interventions || ''}\nClient Response: ${nd.client_response || ''}\nNotes: ${nd.notes || ''}`
@@ -996,8 +1052,8 @@ export default function SessionNotesPage() {
                 <div className="signature-modal">
                     <p className="signature-disclaimer">
                         {signatureMode === 'cosign'
-                            ? 'By co-signing this note, I certify that I have reviewed and approved it. This action cannot be undone.'
-                            : 'By signing this note, I certify that the information is accurate and complete to the best of my knowledge. This action cannot be undone.'}
+                            ? 'By co-signing this note, I certify that I have reviewed the documentation, the services were medically necessary, and the information is accurate and complete. This electronic signature is legally binding.'
+                            : 'I certify that the services documented were medically necessary, that the information provided is accurate and complete to the best of my knowledge, and that this documentation was completed at or near the time of service. This electronic signature is legally binding.'}
                     </p>
 
                     <div className="signature-pad-container">

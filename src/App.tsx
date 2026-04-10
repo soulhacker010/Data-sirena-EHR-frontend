@@ -32,6 +32,10 @@ import SettingsPage from './pages/SettingsPage'
 import NotificationsPage from './pages/NotificationsPage'
 import UsersPage from './pages/UsersPage'
 import AuditLogPage from './pages/AuditLogPage'
+import IntakeListPage from './pages/IntakeListPage'
+import IntakeEditorPage from './pages/IntakeEditorPage'
+import TreatmentPlanListPage from './pages/TreatmentPlanListPage'
+import TreatmentPlanEditorPage from './pages/TreatmentPlanEditorPage'
 import NotFoundPage from './pages/NotFoundPage'
 
 function App() {
@@ -57,6 +61,16 @@ function App() {
             <Route path="/notes" element={<ProtectedRoute allowedRoles={CLINICAL_ROLES}><SessionNotesPage /></ProtectedRoute>} />
             <Route path="/notes/new" element={<ProtectedRoute allowedRoles={CLINICAL_ROLES}><NoteEditorPage /></ProtectedRoute>} />
             <Route path="/notes/:id/edit" element={<ProtectedRoute allowedRoles={CLINICAL_ROLES}><NoteEditorPage /></ProtectedRoute>} />
+
+            {/* Intakes — IsClinicalStaff (admin, supervisor, clinician) */}
+            <Route path="/intakes" element={<ProtectedRoute allowedRoles={CLINICAL_ROLES}><IntakeListPage /></ProtectedRoute>} />
+            <Route path="/intakes/new" element={<ProtectedRoute allowedRoles={CLINICAL_ROLES}><IntakeEditorPage /></ProtectedRoute>} />
+            <Route path="/intakes/:id/edit" element={<ProtectedRoute allowedRoles={CLINICAL_ROLES}><IntakeEditorPage /></ProtectedRoute>} />
+
+            {/* Treatment Plans — IsClinicalStaff (admin, supervisor, clinician) */}
+            <Route path="/treatment-plans" element={<ProtectedRoute allowedRoles={CLINICAL_ROLES}><TreatmentPlanListPage /></ProtectedRoute>} />
+            <Route path="/treatment-plans/new" element={<ProtectedRoute allowedRoles={CLINICAL_ROLES}><TreatmentPlanEditorPage /></ProtectedRoute>} />
+            <Route path="/treatment-plans/:id/edit" element={<ProtectedRoute allowedRoles={CLINICAL_ROLES}><TreatmentPlanEditorPage /></ProtectedRoute>} />
 
             {/* Billing — IsBiller (admin, biller) */}
             <Route path="/billing" element={<ProtectedRoute allowedRoles={BILLING_ROLES}><BillingPage /></ProtectedRoute>} />

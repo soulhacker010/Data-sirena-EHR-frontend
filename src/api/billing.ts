@@ -114,4 +114,39 @@ export const billingApi = {
         const { data } = await apiClient.post<Claim>(`/claims/${claimId}/write-off/`, payload)
         return data
     },
+
+    // BUILD 6.1: CPT code suggestions
+    getCPTSuggestions: async (params: {
+        specialty?: string
+        duration?: number
+        service_type?: string
+        is_initial?: boolean
+    }): Promise<CPTSuggestion[]> => {
+        const { data } = await apiClient.get<CPTSuggestion[]>('/cpt-suggestions/', { params })
+        return data
+    },
+
+    // BUILD 6.2: Modifier suggestions
+    getModifierSuggestions: async (params: {
+        code: string
+        is_telehealth?: boolean
+        telehealth_type?: 'default' | 'audio_only' | 'store_forward' | 'cms'
+        provider_type?: string
+        is_assistant?: boolean
+    }): Promise<{ modifiers: string[] }> => {
+        const { data } = await apiClient.get<{ modifiers: string[] }>('/modifier-suggestions/', { params })
+        return data
+    },
+}
+
+export interface CPTSuggestion {
+    code: string
+    description: string
+    specialty: string[]
+    duration_min: number
+    duration_max: number
+    type: string
+    typical_units: number
+    modifiers: string[]
+    initial_only?: boolean
 }

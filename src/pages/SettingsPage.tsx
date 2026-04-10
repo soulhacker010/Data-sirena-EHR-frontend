@@ -13,7 +13,10 @@ import {
     EnvelopeSimple,
     Phone,
     MapPin,
-    CheckCircle
+    CheckCircle,
+    Plus,
+    Trash,
+    IdentificationBadge
 } from '@phosphor-icons/react'
 
 interface SettingsSection {
@@ -56,6 +59,11 @@ export default function SettingsPage() {
         contact_email: '',
         tax_id: ''
     })
+
+    // NPI management state
+    const [npis, setNpis] = useState<Array<{ id: string; npi_number: string; business_name: string; is_active: boolean }>>([])
+    const [newNpi, setNewNpi] = useState({ npi_number: '', business_name: '' })
+    const [isNpiSaving, setIsNpiSaving] = useState(false)
 
     // Notification preferences — loaded from backend
     const [notifications, setNotifications] = useState({
@@ -100,6 +108,13 @@ export default function SettingsPage() {
                     contact_email: org.contact_email || '',
                     tax_id: org.tax_id || ''
                 })
+
+                // Load NPIs
+                try {
+                    const { default: apiClient } = await import('../api/client')
+                    const npiRes = await apiClient.get('/auth/npis/')
+                    setNpis(npiRes.data || [])
+                } catch { /* no npis yet */ }
 
                 // Notification preferences
                 const prefs = await settingsApi.getNotificationPreferences()
@@ -195,6 +210,49 @@ export default function SettingsPage() {
             toast.error(err?.response?.data?.detail || 'Failed to save settings')
         } finally {
             setIsSaving(false)
+        }
+    }
+
+    const handleAddNpi = async () => {
+        if (!newNpi.npi_number) {
+            toast.error('Enter an NPI number in the left field')
+            return
+        }
+        if (newNpi.npi_number.length !== 10) {
+            toast.error(`NPI must be exactly 10 digits — you entered ${newNpi.npi_number.length} digits`)
+            return
+        }
+        if (!newNpi.business_name.trim()) {
+            toast.error('Enter your practice / business name in the right field')
+            return
+        }
+        setIsNpiSaving(true)
+        try {
+            const { default: apiClient } = await import('../api/client')
+            const { data } = await apiClient.post('/auth/npis/', {
+                npi_number: newNpi.npi_number,
+                business_name: newNpi.business_name,
+                is_active: true,
+            })
+            setNpis(prev => [...prev, data])
+            setNewNpi({ npi_number: '', business_name: '' })
+            toast.success('NPI added')
+        } catch (err: any) {
+            toast.error(err?.response?.data?.npi_number?.[0] || 'Failed to add NPI')
+        } finally {
+            setIsNpiSaving(false)
+        }
+    }
+
+    const handleDeleteNpi = async (id: string) => {
+        if (!window.confirm('Remove this NPI?')) return
+        try {
+            const { default: apiClient } = await import('../api/client')
+            await apiClient.delete(`/auth/npis/${id}/`)
+            setNpis(prev => prev.filter(n => n.id !== id))
+            toast.success('NPI removed')
+        } catch {
+            toast.error('Failed to remove NPI')
         }
     }
 
@@ -388,6 +446,90 @@ export default function SettingsPage() {
                                     )}
                                 </div>
                             )}
+
+                            {/* ─── NPI Management ──────────────────────── */}
+                            <div style={{ marginTop: '2rem', borderTop: '1px solid #e5e7eb', paddingTop: '1.5rem' }}>
+                                <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                    <IdentificationBadge size={20} /> Provider NPIs
+                                </h3>
+                                <p className="settings-section-desc" style={{ marginBottom: '1rem' }}>
+                                    National Provider Identifiers used on intakes and claims. Add your practice's NPI here.
+                                </p>
+
+                                {npis.length > 0 && (
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        {npis.map(npi => (
+                                            <div key={npi.id} style={{
+                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                padding: '0.5rem 0.75rem', background: '#f9fafb', borderRadius: '0.375rem',
+                                                marginBottom: '0.5rem', border: '1px solid #e5e7eb',
+                                            }}>
+                                                <div>
+                                                    <strong>{npi.npi_number}</strong>
+                                                    <span style={{ marginLeft: '0.75rem', color: '#6b7280' }}>{npi.business_name}</span>
+                                                </div>
+                                                {isAdmin && (
+                                                    <button
+                                                        className="btn-icon-sm btn-danger"
+                                                        title="Remove NPI"
+                                                        onClick={() => handleDeleteNpi(npi.id)}
+                                                    >
+                                                        <Trash size={14} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                {isAdmin && (
+                                    <div style={{
+                                        background: '#f9fafb', border: '1px solid #e5e7eb',
+                                        borderRadius: '0.5rem', padding: '1rem', marginTop: '0.5rem',
+                                    }}>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                                            <div className="form-group" style={{ marginBottom: 0 }}>
+                                                <label className="form-label" style={{ fontWeight: 600 }}>NPI Number *</label>
+                                                <input
+                                                    type="text"
+                                                    className="form-input-basic"
+                                                    placeholder="e.g. 1234567890"
+                                                    maxLength={10}
+                                                    value={newNpi.npi_number}
+                                                    onChange={e => setNewNpi(prev => ({ ...prev, npi_number: e.target.value.replace(/\D/g, '') }))}
+                                                />
+                                                <span style={{ fontSize: '0.75rem', color: '#9ca3af', marginTop: '0.25rem', display: 'block' }}>
+                                                    {newNpi.npi_number.length}/10 digits
+                                                </span>
+                                            </div>
+                                            <div className="form-group" style={{ marginBottom: 0 }}>
+                                                <label className="form-label" style={{ fontWeight: 600 }}>Business / Practice Name *</label>
+                                                <input
+                                                    type="text"
+                                                    className="form-input-basic"
+                                                    placeholder="e.g. Baker Street Behavioral Health"
+                                                    value={newNpi.business_name}
+                                                    onChange={e => setNewNpi(prev => ({ ...prev, business_name: e.target.value }))}
+                                                />
+                                            </div>
+                                        </div>
+                                        <button
+                                            className="btn-primary"
+                                            onClick={handleAddNpi}
+                                            disabled={isNpiSaving}
+                                            style={{ whiteSpace: 'nowrap' }}
+                                        >
+                                            <Plus size={16} /> {isNpiSaving ? 'Adding...' : 'Add NPI'}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {npis.length === 0 && !isAdmin && (
+                                    <p style={{ color: '#9ca3af', fontStyle: 'italic' }}>
+                                        No NPIs configured. Ask an administrator to add one.
+                                    </p>
+                                )}
+                            </div>
                         </div>
                     )}
 

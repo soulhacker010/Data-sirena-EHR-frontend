@@ -7,11 +7,14 @@ import Modal from '../components/ui/Modal'
 import SignaturePad from '../components/ui/SignaturePad'
 import { notesApi, clientsApi, usersApi, getApiErrorMessage } from '../api'
 import type { SessionNote, Client, User } from '../types'
+import { MentalStatusExam, RiskAssessment, ABADataFields, InterventionsChecklist } from '../components/clinical'
+import { ABA_CPT_CODES } from '../constants/clinicalFields'
 import {
     ArrowLeft,
     User as UserIcon,
     CalendarBlank,
-
+    Copy,
+    CalendarPlus,
     FloppyDisk,
     CheckCircle,
     PencilSimple,
@@ -40,6 +43,16 @@ export default function NoteEditorPage() {
     const [showCoSignModal, setShowCoSignModal] = useState(false)
     const [selectedSupervisor, setSelectedSupervisor] = useState('')
     const [coSignRequested, setCoSignRequested] = useState(false)
+
+    // Clinical section data (stored in note_data)
+    const [clinicalData, setClinicalData] = useState<Record<string, unknown>>({})
+    const [collapsedSections, setCollapsedSections] = useState({
+        mse: false,
+        risk: true,
+        aba: false,
+        interventions: true,
+    })
+    const clinicalDataRef = useRef<Record<string, unknown>>({})
 
     // Auto-save refs
     const isDirtyRef = useRef(false)
@@ -91,6 +104,37 @@ export default function NoteEditorPage() {
                         notes: (nd.notes as string) || '',
                         plan_next_session: (nd.plan_next_session as string) || '',
                     })
+
+                    // Populate clinical section data
+                    const clinical: Record<string, unknown> = {}
+                    for (const [k, v] of Object.entries(nd)) {
+                        if (k.startsWith('mse_') || k.startsWith('risk_') || k.startsWith('aba_') || k.startsWith('auth_') || k === 'interventions_checklist' || k === 'medical_necessity') {
+                            clinical[k] = v
+                        }
+                    }
+                    setClinicalData(clinical)
+                    clinicalDataRef.current = clinical
+
+                    // Auto-fetch latest authorization units from client record
+                    if (existingNote.client_id && !existingNote.is_locked) {
+                        try {
+                            const auths = await clientsApi.getAuthorizations(existingNote.client_id)
+                            const active = auths.find((a: any) =>
+                                new Date(a.end_date) >= new Date() && new Date(a.start_date) <= new Date()
+                            )
+                            if (active) {
+                                const updated = {
+                                    ...clinical,
+                                    auth_authorized: String(active.units_approved),
+                                    auth_used: String(active.units_used),
+                                }
+                                setClinicalData(updated)
+                                clinicalDataRef.current = updated
+                            }
+                        } catch {
+                            // keep existing values
+                        }
+                    }
                 }
             } catch (err: any) {
                 toast.error(getApiErrorMessage(err, 'Failed to load'))
@@ -111,6 +155,20 @@ export default function NoteEditorPage() {
         })
     }
 
+    const handleClinicalChange = (key: string, value: unknown) => {
+        setClinicalData(prev => {
+            const updated = { ...prev, [key]: value }
+            clinicalDataRef.current = updated
+            isDirtyRef.current = true
+            return updated
+        })
+    }
+
+    const getMergedNoteData = () => ({
+        ...formContentRef.current,
+        ...clinicalDataRef.current,
+    })
+
     // Keep isSavingRef in sync
     useEffect(() => { isSavingRef.current = isSaving }, [isSaving])
 
@@ -130,7 +188,7 @@ export default function NoteEditorPage() {
                 isDirtyRef.current = false
 
                 await notesApi.update(note.id, {
-                    note_data: formContentRef.current,
+                    note_data: getMergedNoteData(),
                 })
                 setLastSaved('Auto-saved ' + new Date().toLocaleTimeString())
             } catch {
@@ -158,7 +216,7 @@ export default function NoteEditorPage() {
                 const created = await notesApi.create({
                     client_id: selectedClientId,
                     template_id: selectedTemplate || undefined,
-                    note_data: formContent,
+                    note_data: { ...formContent, ...clinicalData },
                 })
                 setNote(created)
                 toast.success('Note created')
@@ -167,7 +225,7 @@ export default function NoteEditorPage() {
             } else if (note) {
                 // Update existing note
                 const updated = await notesApi.update(note.id, {
-                    note_data: formContent,
+                    note_data: { ...formContent, ...clinicalData },
                 })
                 setNote(updated)
                 toast.success('Draft saved')
@@ -195,6 +253,44 @@ export default function NoteEditorPage() {
             toast.error(getApiErrorMessage(err, 'Failed to sign'))
         } finally {
             setIsSaving(false)
+        }
+    }
+
+    const handleCopyFromLast = async () => {
+        const clientId = note?.client_id || selectedClientId
+        if (!clientId) {
+            toast.error('Please select a client first')
+            return
+        }
+        try {
+            const lastNote = await notesApi.lastNote(clientId)
+            const nd = lastNote.note_data || {}
+            setFormContent({
+                objectives: (nd.objectives as string) || '',
+                interventions: (nd.interventions as string) || '',
+                client_response: (nd.client_response as string) || '',
+                notes: (nd.notes as string) || '',
+                plan_next_session: (nd.plan_next_session as string) || '',
+            })
+            formContentRef.current = {
+                objectives: (nd.objectives as string) || '',
+                interventions: (nd.interventions as string) || '',
+                client_response: (nd.client_response as string) || '',
+                notes: (nd.notes as string) || '',
+                plan_next_session: (nd.plan_next_session as string) || '',
+            }
+            const clinical: Record<string, unknown> = {}
+            for (const [k, v] of Object.entries(nd)) {
+                if (k.startsWith('mse_') || k.startsWith('risk_') || k.startsWith('aba_') || k === 'interventions_checklist' || k === 'medical_necessity') {
+                    clinical[k] = v
+                }
+            }
+            setClinicalData(clinical)
+            clinicalDataRef.current = clinical
+            isDirtyRef.current = true
+            toast.success('Copied from last signed note — review and update before saving')
+        } catch {
+            toast.error('No previous signed note found for this client')
         }
     }
 
@@ -281,13 +377,13 @@ export default function NoteEditorPage() {
                     <button
                         className="btn-primary"
                         onClick={handleComplete}
-                        disabled={!isFormValid() || noteStatus === 'signed'}
+                        disabled={!isFormValid() || !!note?.is_locked}
                     >
                         <PencilSimple size={18} />
-                        {noteStatus === 'signed' ? 'Signed' : 'Complete & Sign'}
+                        {note?.is_locked ? 'Locked' : 'Complete & Sign'}
                     </button>
 
-                    {requiresCoSign && noteStatus !== 'signed' && note && (
+                    {requiresCoSign && !note?.is_locked && note && (
                         <button
                             className={`btn-secondary ${coSignRequested ? 'btn-success-outline' : ''}`}
                             onClick={() => setShowCoSignModal(true)}
@@ -309,7 +405,24 @@ export default function NoteEditorPage() {
                                 <label className="form-label">Client *</label>
                                 <select
                                     value={selectedClientId}
-                                    onChange={(e) => setSelectedClientId(e.target.value)}
+                                    onChange={async (e) => {
+                                        const cid = e.target.value
+                                        setSelectedClientId(cid)
+                                        if (cid) {
+                                            try {
+                                                const auths = await clientsApi.getAuthorizations(cid)
+                                                const active = auths.find((a: any) =>
+                                                    new Date(a.end_date) >= new Date() && new Date(a.start_date) <= new Date()
+                                                )
+                                                if (active) {
+                                                    handleClinicalChange('auth_authorized', String(active.units_approved))
+                                                    handleClinicalChange('auth_used', String(active.units_used))
+                                                }
+                                            } catch {
+                                                // no auth found — leave manual
+                                            }
+                                        }
+                                    }}
                                     className="form-input-basic"
                                 >
                                     <option value="">Select client...</option>
@@ -371,6 +484,68 @@ export default function NoteEditorPage() {
                         )}
                     </div>
 
+                    {/* Treatment Plan Link (BUILD 2.7) */}
+                    {(note?.client_id || selectedClientId) && (
+                        <div className="note-editor-info-section">
+                            <h4>Treatment Plan</h4>
+                            <button
+                                type="button"
+                                className="btn-icon-sm"
+                                style={{ width: '100%', justifyContent: 'center' }}
+                                onClick={() => navigate(`/treatment-plans?client=${note?.client_id || selectedClientId}`)}
+                            >
+                                <FileText size={16} /> View Active Plan
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Authorization Units (BUILD 2.8) */}
+                    {(note?.client_id || selectedClientId) && (
+                        <div className="note-editor-info-section">
+                            <h4>Authorization</h4>
+                            <div className="auth-units-grid">
+                                <div className="auth-unit">
+                                    <span className="auth-unit-label">Authorized</span>
+                                    <span className="auth-unit-value">{(clinicalData.auth_authorized as string) || '—'}</span>
+                                </div>
+                                <div className="auth-unit">
+                                    <span className="auth-unit-label">Used</span>
+                                    <span className="auth-unit-value">{(clinicalData.auth_used as string) || '—'}</span>
+                                </div>
+                                <div className="auth-unit">
+                                    <span className="auth-unit-label">Remaining</span>
+                                    <span className="auth-unit-value">
+                                        {clinicalData.auth_authorized && clinicalData.auth_used
+                                            ? String(Number(clinicalData.auth_authorized) - Number(clinicalData.auth_used))
+                                            : '—'}
+                                    </span>
+                                </div>
+                            </div>
+                            {!note?.is_locked && (
+                                <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                    <input
+                                        type="number"
+                                        className="form-input-basic"
+                                        placeholder="Auth"
+                                        value={(clinicalData.auth_authorized as string) || ''}
+                                        onChange={e => handleClinicalChange('auth_authorized', e.target.value)}
+                                        min="0"
+                                        style={{ flex: 1 }}
+                                    />
+                                    <input
+                                        type="number"
+                                        className="form-input-basic"
+                                        placeholder="Used"
+                                        value={(clinicalData.auth_used as string) || ''}
+                                        onChange={e => handleClinicalChange('auth_used', e.target.value)}
+                                        min="0"
+                                        style={{ flex: 1 }}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="note-editor-info-section">
                         <h4>Note Status</h4>
                         <span className={`status-badge status-${noteStatus}`}>
@@ -407,7 +582,7 @@ export default function NoteEditorPage() {
                             <select
                                 value={selectedTemplate}
                                 onChange={(e) => setSelectedTemplate(e.target.value)}
-                                disabled={noteStatus === 'signed'}
+                                disabled={!!note?.is_locked}
                             >
                                 <option value="">No template</option>
                                 <option value="aba_session">ABA Session Note</option>
@@ -417,12 +592,22 @@ export default function NoteEditorPage() {
                             </select>
                             <CaretDown size={16} className="select-icon" />
                         </div>
+                        {!note?.is_locked && (
+                            <button
+                                type="button"
+                                className="btn-icon-sm"
+                                onClick={handleCopyFromLast}
+                                title="Copy data from the last signed note for this client"
+                            >
+                                <Copy size={16} /> Copy from Last
+                            </button>
+                        )}
                     </div>
 
-                    {noteStatus === 'signed' && (
+                    {note?.is_locked && (
                         <div className="note-editor-locked-banner">
                             <Warning size={20} />
-                            <span>This note has been signed and cannot be edited.</span>
+                            <span>This note has been {noteStatus === 'co_signed' ? 'co-signed' : 'signed'} and is locked. Only an administrator can unlock it for revision.</span>
                         </div>
                     )}
 
@@ -437,7 +622,7 @@ export default function NoteEditorPage() {
                                 value={formContent.objectives}
                                 onChange={(e) => handleContentChange('objectives', e.target.value)}
                                 rows={4}
-                                disabled={noteStatus === 'signed'}
+                                disabled={!!note?.is_locked}
                             />
                         </div>
 
@@ -450,7 +635,7 @@ export default function NoteEditorPage() {
                                 value={formContent.interventions}
                                 onChange={(e) => handleContentChange('interventions', e.target.value)}
                                 rows={4}
-                                disabled={noteStatus === 'signed'}
+                                disabled={!!note?.is_locked}
                             />
                         </div>
 
@@ -463,7 +648,7 @@ export default function NoteEditorPage() {
                                 value={formContent.client_response}
                                 onChange={(e) => handleContentChange('client_response', e.target.value)}
                                 rows={4}
-                                disabled={noteStatus === 'signed'}
+                                disabled={!!note?.is_locked}
                             />
                         </div>
 
@@ -476,7 +661,7 @@ export default function NoteEditorPage() {
                                 value={formContent.notes}
                                 onChange={(e) => handleContentChange('notes', e.target.value)}
                                 rows={5}
-                                disabled={noteStatus === 'signed'}
+                                disabled={!!note?.is_locked}
                             />
                         </div>
 
@@ -487,10 +672,86 @@ export default function NoteEditorPage() {
                                 value={formContent.plan_next_session}
                                 onChange={(e) => handleContentChange('plan_next_session', e.target.value)}
                                 rows={3}
-                                disabled={noteStatus === 'signed'}
+                                disabled={!!note?.is_locked}
                             />
                         </div>
                     </div>
+
+                    {/* Clinical Sections */}
+                    <MentalStatusExam
+                        values={Object.fromEntries(
+                            Object.entries(clinicalData)
+                                .filter(([k]) => k.startsWith('mse_'))
+                                .map(([k, v]) => [k, String(v || '')])
+                        )}
+                        onChange={handleClinicalChange}
+                        disabled={!!note?.is_locked}
+                        collapsed={collapsedSections.mse}
+                        onToggleCollapse={() => setCollapsedSections(prev => ({ ...prev, mse: !prev.mse }))}
+                    />
+
+                    <RiskAssessment
+                        values={Object.fromEntries(
+                            Object.entries(clinicalData).filter(([k]) => k.startsWith('risk_'))
+                        )}
+                        onChange={handleClinicalChange}
+                        disabled={!!note?.is_locked}
+                        collapsed={collapsedSections.risk}
+                        onToggleCollapse={() => setCollapsedSections(prev => ({ ...prev, risk: !prev.risk }))}
+                    />
+
+                    {ABA_CPT_CODES.includes(serviceCode || note?.service_code || '') && (
+                        <ABADataFields
+                            values={Object.fromEntries(
+                                Object.entries(clinicalData).filter(([k]) => k.startsWith('aba_'))
+                            )}
+                            onChange={handleClinicalChange}
+                            disabled={!!note?.is_locked}
+                            collapsed={collapsedSections.aba}
+                            onToggleCollapse={() => setCollapsedSections(prev => ({ ...prev, aba: !prev.aba }))}
+                        />
+                    )}
+
+                    <InterventionsChecklist
+                        selected={(clinicalData.interventions_checklist as string[]) || []}
+                        onChange={(selected) => handleClinicalChange('interventions_checklist', selected)}
+                        disabled={!!note?.is_locked}
+                        collapsed={collapsedSections.interventions}
+                        onToggleCollapse={() => setCollapsedSections(prev => ({ ...prev, interventions: !prev.interventions }))}
+                    />
+
+                    {/* Medical Necessity Statement (BUILD 2.6) */}
+                    <div className="clinical-section" style={{ marginTop: '1.5rem' }}>
+                        <div className="clinical-section-header" style={{ cursor: 'default' }}>
+                            <div className="clinical-section-title">
+                                <FileText size={20} weight="duotone" />
+                                <h4>Medical Necessity Statement</h4>
+                            </div>
+                        </div>
+                        <div style={{ padding: '1rem' }}>
+                            <textarea
+                                className="form-textarea"
+                                value={(clinicalData.medical_necessity as string) || ''}
+                                onChange={e => handleClinicalChange('medical_necessity', e.target.value)}
+                                placeholder="Services were medically necessary to address the client's diagnosis and treatment goals. The interventions provided are consistent with the treatment plan and are expected to improve the client's functioning."
+                                rows={3}
+                                disabled={!!note?.is_locked}
+                            />
+                        </div>
+                    </div>
+
+                    {/* Schedule Next Session (BUILD 2.10) */}
+                    {!note?.is_locked && note && (
+                        <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+                            <button
+                                type="button"
+                                className="btn-icon-sm"
+                                onClick={() => navigate(`/calendar?client=${note.client_id}`)}
+                            >
+                                <CalendarPlus size={16} /> Schedule Next Session
+                            </button>
+                        </div>
+                    )}
                 </div>
             </div>
 

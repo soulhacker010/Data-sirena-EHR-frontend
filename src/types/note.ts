@@ -102,6 +102,7 @@ export interface NoteFilters {
     provider_id?: string
     client_id?: string
     status?: NoteStatus
+    service_code?: string
     start_date?: string
     end_date?: string
     page?: number

@@ -1,13 +1,19 @@
 import { useRef, useEffect, useState } from 'react'
 import { Eraser, Check, X } from '@phosphor-icons/react'
 
+const DEFAULT_CERTIFICATION = 'I certify that the services documented were medically necessary, '
+    + 'that the information provided is accurate and complete to the best of my knowledge, '
+    + 'and that this documentation was completed at or near the time of service. '
+    + 'This electronic signature is legally binding.'
+
 interface SignaturePadProps {
     onSave: (signatureDataUrl: string) => void
     onCancel: () => void
     signerName?: string
+    certificationText?: string
 }
 
-export default function SignaturePad({ onSave, onCancel, signerName }: SignaturePadProps) {
+export default function SignaturePad({ onSave, onCancel, signerName, certificationText }: SignaturePadProps) {
     const canvasRef = useRef<HTMLCanvasElement>(null)
     const [isDrawing, setIsDrawing] = useState(false)
     const [hasSignature, setHasSignature] = useState(false)
@@ -176,8 +182,7 @@ export default function SignaturePad({ onSave, onCancel, signerName }: Signature
             </div>
 
             <p className="signature-pad-disclaimer">
-                By signing above, I certify that the information provided is accurate and complete
-                to the best of my knowledge. This electronic signature is legally binding.
+                {certificationText || DEFAULT_CERTIFICATION}
             </p>
         </div>
     )

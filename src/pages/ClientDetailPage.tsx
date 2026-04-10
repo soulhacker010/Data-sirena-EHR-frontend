@@ -4,10 +4,10 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { Modal, EditClientModal, EmptyState, PageSkeleton, ConfirmDialog } from '../components/ui'
 import StripePaymentForm from '../components/billing/StripePaymentForm'
-import { clientsApi, billingApi, notesApi } from '../api'
+import { clientsApi, billingApi, notesApi, appointmentsApi } from '../api'
 import { useAuth } from '../context'
 import { BILLING_ROLES } from '../utils/permissions'
-import type { ClientDetail, Authorization, ClientDocument, Invoice, Payment, Claim, SessionNote } from '../types'
+import type { ClientDetail, Authorization, ClientDocument, Invoice, Payment, Claim, SessionNote, Appointment } from '../types'
 import {
     ArrowLeft,
     User,
@@ -38,7 +38,7 @@ import {
 } from '@phosphor-icons/react'
 
 // Tab type
-type TabType = 'profile' | 'insurance' | 'authorizations' | 'notes' | 'documents' | 'billing'
+type TabType = 'profile' | 'insurance' | 'authorizations' | 'appointments' | 'notes' | 'documents' | 'billing'
 
 // Calculate age
 const calculateAge = (dob: string) => {
@@ -100,6 +100,7 @@ export default function ClientDetailPage() {
     const [payments, setPayments] = useState<Payment[]>([])
     const [claims, setClaims] = useState<Claim[]>([])
     const [clientNotes, setClientNotes] = useState<SessionNote[]>([])
+    const [appointments, setAppointments] = useState<Appointment[]>([])
 
     const [activeTab, setActiveTab] = useState<TabType>('profile')
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
@@ -111,6 +112,11 @@ export default function ClientDetailPage() {
     const [isLoading, setIsLoading] = useState(true)
     const [deleteDocId, setDeleteDocId] = useState<string | null>(null)
     const [deleteDocName, setDeleteDocName] = useState<string | null>(null)
+    
+    // Derived state for billing
+    const balance = invoices.reduce((sum, inv) => sum + Number(inv.balance || 0), 0)
+    const selectedOutstandingInvoice = invoices.find(inv => inv.status !== 'paid' && Number(inv.balance || 0) > 0)
+    const documents = client?.documents || []
 
     // Payment form state
     const [paymentAmount, setPaymentAmount] = useState('')
@@ -141,13 +147,15 @@ export default function ClientDetailPage() {
         const load = async () => {
             setIsLoading(true)
             try {
-                const [clientData, notesRes] = await Promise.all([
+                const [clientData, notesRes, appointmentsRes] = await Promise.all([
                     clientsApi.getById(id),
                     notesApi.getAll({ client_id: id, page_size: 100 }),
+                    appointmentsApi.getAll({ client_id: id, page_size: 100 }),
                 ])
                 setClient(clientData)
                 setAuthorizations(clientData.authorizations || [])
                 setClientNotes(notesRes.results)
+                setAppointments(appointmentsRes.results)
 
                 if (canAccessBilling) {
                     const [invoicesRes, paymentsRes, claimsData] = await Promise.all([
@@ -455,6 +463,9 @@ export default function ClientDetailPage() {
                 <button className={`client-tab ${activeTab === 'authorizations' ? 'active' : ''}`} onClick={() => setActiveTab('authorizations')}>
                     <FileText size={18} weight="duotone" /> Authorizations
                 </button>
+                <button className={`client-tab ${activeTab === 'appointments' ? 'active' : ''}`} onClick={() => setActiveTab('appointments')}>
+                    <Calendar size={18} weight="duotone" /> Appointments
+                </button>
                 <button className={`client-tab ${activeTab === 'notes' ? 'active' : ''}`} onClick={() => setActiveTab('notes')}>
                     <FileText size={18} weight="duotone" /> Notes
                 </button>
@@ -717,6 +728,92 @@ export default function ClientDetailPage() {
                     </div>
                 )}
 
+                {/* Appointments Tab */}
+                {activeTab === 'appointments' && (
+                    <div className="card">
+                        <div className="card-header">
+                            <h2 className="card-title">Appointments</h2>
+                            <button
+                                className="btn-primary btn-sm"
+                                onClick={() => navigate(`/calendar?clientId=${id}&action=new`)}
+                            >
+                                <Plus size={16} weight="bold" /> Schedule Appointment
+                            </button>
+                        </div>
+                        <div className="card-body p-0">
+                            {appointments.length > 0 ? (
+                                <table className="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Date & Time</th>
+                                            <th>Provider</th>
+                                            <th>Service</th>
+                                            <th>Duration</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {appointments
+                                            .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime())
+                                            .map(apt => {
+                                                const startDate = new Date(apt.start_time)
+                                                const endDate = new Date(apt.end_time)
+                                                const duration = Math.round((endDate.getTime() - startDate.getTime()) / (1000 * 60))
+                                                
+                                                return (
+                                                    <tr key={apt.id}>
+                                                        <td>
+                                                            <div>
+                                                                <p className="font-medium">{formatDate(apt.start_time)}</p>
+                                                                <p className="text-sm text-muted">
+                                                                    {startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - {endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                                                </p>
+                                                            </div>
+                                                        </td>
+                                                        <td>{apt.provider.first_name} {apt.provider.last_name}</td>
+                                                        <td>
+                                                            <span className="cpt-code">{apt.service_code || '—'}</span>
+                                                            {apt.units && <span className="text-muted text-sm"> ({apt.units} units)</span>}
+                                                        </td>
+                                                        <td>{duration} min</td>
+                                                        <td>
+                                                            <span className={`badge badge-${
+                                                                apt.status === 'attended' ? 'success' : 
+                                                                apt.status === 'cancelled' ? 'neutral' : 
+                                                                apt.status === 'no_show' ? 'error' : 
+                                                                'pending'
+                                                            }`}>
+                                                                {apt.status === 'attended' ? 'Completed' : 
+                                                                 apt.status === 'no_show' ? 'No-show' :
+                                                                 apt.status.charAt(0).toUpperCase() + apt.status.slice(1)}
+                                                            </span>
+                                                        </td>
+                                                        <td>
+                                                            <button
+                                                                className="btn-sm btn-secondary"
+                                                                onClick={() => navigate(`/calendar`)}
+                                                                title="View in Calendar"
+                                                            >
+                                                                <Calendar size={14} weight="bold" />
+                                                            </button>
+                                                        </td>
+                                                    </tr>
+                                                )
+                                            })}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <EmptyState
+                                    variant="no-data"
+                                    title="No appointments yet"
+                                    description="Schedule an appointment to get started."
+                                />
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Notes Tab */}
                 {activeTab === 'notes' && (
                     <div className="card">
@@ -822,96 +919,169 @@ export default function ClientDetailPage() {
                 {/* Billing Tab */}
                 {activeTab === 'billing' && (
                     <div className="space-y-6">
-                        {/* Balance Card */}
-                        <div className="card billing-balance-card">
-                            <div className="billing-balance">
-                                <div>
-                                    <p className="balance-label">Current Balance</p>
-                                    <p className="balance-value">{formatCurrency(balance)}</p>
+                        {/* Billing Summary Cards */}
+                        <div className="billing-summary-grid">
+                            <div className="billing-summary-card">
+                                <div className="summary-icon">
+                                    <CurrencyDollar size={24} weight="duotone" />
                                 </div>
-                                <button
-                                    className="btn-primary"
-                                    onClick={() => setIsPaymentModalOpen(true)}
-                                    disabled={!selectedOutstandingInvoice}
-                                >
-                                    <Receipt size={18} weight="bold" /> Record Payment
-                                </button>
+                                <div className="summary-content">
+                                    <p className="summary-label">Outstanding Balance</p>
+                                    <p className="summary-value">{formatCurrency(balance)}</p>
+                                </div>
+                            </div>
+                            <div className="billing-summary-card">
+                                <div className="summary-icon">
+                                    <Receipt size={24} weight="duotone" />
+                                </div>
+                                <div className="summary-content">
+                                    <p className="summary-label">Total Invoiced</p>
+                                    <p className="summary-value">{formatCurrency(invoices.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0))}</p>
+                                </div>
+                            </div>
+                            <div className="billing-summary-card">
+                                <div className="summary-icon">
+                                    <CheckCircle size={24} weight="duotone" />
+                                </div>
+                                <div className="summary-content">
+                                    <p className="summary-label">Total Paid</p>
+                                    <p className="summary-value text-green-600">{formatCurrency(payments.reduce((sum, pmt) => sum + Number(pmt.amount || 0), 0))}</p>
+                                </div>
+                            </div>
+                            <div className="billing-summary-card">
+                                <div className="summary-icon">
+                                    <ShieldCheck size={24} weight="duotone" />
+                                </div>
+                                <div className="summary-content">
+                                    <p className="summary-label">Insurance Claims</p>
+                                    <p className="summary-value">{claims.filter(c => c.status !== 'denied').length} of {claims.length}</p>
+                                </div>
                             </div>
                         </div>
 
-                        {/* Invoices */}
+                        {/* Quick Actions */}
+                        <div className="billing-actions">
+                            <button
+                                className="btn-primary"
+                                onClick={() => setIsPaymentModalOpen(true)}
+                                disabled={!selectedOutstandingInvoice}
+                            >
+                                <Receipt size={18} weight="bold" /> Record Payment
+                            </button>
+                            <button
+                                className="btn-secondary"
+                                onClick={() => navigate('/billing/invoices')}
+                            >
+                                <FileText size={18} weight="bold" /> View All Billing
+                            </button>
+                        </div>
+
+                        {/* Recent Activity */}
                         <div className="card">
                             <div className="card-header">
-                                <h2 className="card-title">Invoices</h2>
+                                <h2 className="card-title">Recent Billing Activity</h2>
                             </div>
                             <div className="card-body p-0">
-                                <table className="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Invoice #</th>
-                                            <th>Date</th>
-                                            <th>Amount</th>
-                                            <th>Paid</th>
-                                            <th>Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {invoices.map(inv => (
-                                            <tr key={inv.id}>
-                                                <td>
-                                                    <Link to={`/billing/invoices/${inv.id}`} className="invoice-link">
-                                                        {inv.invoice_number}
-                                                    </Link>
-                                                </td>
-                                                <td>{formatDate(inv.invoice_date)}</td>
-                                                <td>{formatCurrency(inv.total_amount)}</td>
-                                                <td>{formatCurrency(inv.paid_amount)}</td>
-                                                <td>
-                                                    <span className={`badge badge-${inv.status === 'paid' ? 'active' : 'pending'}`}>
-                                                        {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        {invoices.length === 0 && (
-                                            <tr><td colSpan={5} className="text-center text-muted">No invoices</td></tr>
-                                        )}
-                                    </tbody>
-                                </table>
+                                {(() => {
+                                    // Combine and sort recent invoices, payments, and claims
+                                    const recentActivity = [
+                                        ...invoices.slice(0, 3).map(inv => ({
+                                            type: 'invoice',
+                                            date: inv.invoice_date,
+                                            description: `Invoice ${inv.invoice_number}`,
+                                            amount: inv.total_amount,
+                                            status: inv.status,
+                                            id: inv.id
+                                        })),
+                                        ...payments.slice(0, 3).map(pmt => ({
+                                            type: 'payment',
+                                            date: pmt.payment_date,
+                                            description: `Payment - ${pmt.payment_method}`,
+                                            amount: pmt.amount,
+                                            status: 'completed',
+                                            reference: pmt.reference_number
+                                        })),
+                                        ...claims.slice(0, 3).map(claim => ({
+                                            type: 'claim',
+                                            date: claim.submitted_at || claim.created_at,
+                                            description: `Claim ${claim.claim_number} - ${claim.payer_name}`,
+                                            amount: claim.billed_amount,
+                                            status: claim.status,
+                                            service: claim.service_code
+                                        }))
+                                    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 6)
+
+                                    return recentActivity.length > 0 ? (
+                                        <div className="billing-activity-list">
+                                            {recentActivity.map((item, index) => (
+                                                <div key={index} className="activity-item">
+                                                    <div className="activity-icon">
+                                                        {item.type === 'invoice' && <Receipt size={16} weight="duotone" />}
+                                                        {item.type === 'payment' && <CurrencyDollar size={16} weight="duotone" />}
+                                                        {item.type === 'claim' && <ShieldCheck size={16} weight="duotone" />}
+                                                    </div>
+                                                    <div className="activity-content">
+                                                        <p className="activity-description">{item.description}</p>
+                                                        <p className="activity-date">{formatDate(item.date)}</p>
+                                                    </div>
+                                                    <div className="activity-amount">
+                                                        <p className={`activity-value ${item.type === 'payment' ? 'text-green-600' : ''}`}>
+                                                            {formatCurrency(item.amount)}
+                                                        </p>
+                                                        <span className={`badge badge-${item.status === 'paid' || item.status === 'completed' ? 'success' : item.status === 'denied' ? 'error' : 'pending'}`}>
+                                                            {item.status}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="text-center text-muted p-4">No recent billing activity</div>
+                                    )
+                                })()}
                             </div>
                         </div>
 
-                        {/* Payments */}
-                        <div className="card">
-                            <div className="card-header">
-                                <h2 className="card-title">Payment History</h2>
-                            </div>
-                            <div className="card-body p-0">
-                                <table className="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Date</th>
-                                            <th>Amount</th>
-                                            <th>Method</th>
-                                            <th>Reference</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {payments.map(pmt => (
-                                            <tr key={pmt.id}>
-                                                <td>{formatDate(pmt.payment_date)}</td>
-                                                <td className="text-green-600 font-semibold">{formatCurrency(pmt.amount)}</td>
-                                                <td>{pmt.payment_method}</td>
-                                                <td><span className="reference">{pmt.reference_number || '—'}</span></td>
+                        {/* Outstanding Invoices */}
+                        {invoices.filter(inv => inv.status !== 'paid').length > 0 && (
+                            <div className="card">
+                                <div className="card-header">
+                                    <h2 className="card-title">Outstanding Invoices</h2>
+                                </div>
+                                <div className="card-body p-0">
+                                    <table className="data-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Invoice #</th>
+                                                <th>Date</th>
+                                                <th>Amount</th>
+                                                <th>Balance Due</th>
+                                                <th>Status</th>
                                             </tr>
-                                        ))}
-                                        {payments.length === 0 && (
-                                            <tr><td colSpan={4} className="text-center text-muted">No payments</td></tr>
-                                        )}
-                                    </tbody>
-                                </table>
+                                        </thead>
+                                        <tbody>
+                                            {invoices.filter(inv => inv.status !== 'paid').map(inv => (
+                                                <tr key={inv.id}>
+                                                    <td>
+                                                        <Link to={`/billing/invoices/${inv.id}`} className="invoice-link">
+                                                            {inv.invoice_number}
+                                                        </Link>
+                                                    </td>
+                                                    <td>{formatDate(inv.invoice_date)}</td>
+                                                    <td>{formatCurrency(inv.total_amount)}</td>
+                                                    <td className="font-semibold">{formatCurrency(inv.balance || inv.total_amount)}</td>
+                                                    <td>
+                                                        <span className={`badge badge-${inv.status === 'paid' ? 'success' : inv.status === 'overdue' ? 'error' : 'warning'}`}>
+                                                            {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         {/* Claims */}
                         <div className="card">

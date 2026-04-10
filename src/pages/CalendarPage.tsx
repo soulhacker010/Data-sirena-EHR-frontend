@@ -251,12 +251,12 @@ export default function CalendarPage() {
             try {
                 // Get provider specialty if available
                 const provider = providersList.find(p => p.id === formData.providerId)
-                const specialty = provider?.profile?.specialty
-                
+                const specialty = (provider as any)?.profile?.specialty
+
                 const suggestions = await billingApi.getCPTSuggestions({
                     specialty,
                     duration,
-                    is_initial: !isEditMode && clientsList.find(c => c.id === formData.clientId)?.is_new_client
+                    is_initial: !isEditMode && (clientsList.find(c => c.id === formData.clientId) as any)?.is_new_client
                 })
                 setCptSuggestions(suggestions)
                 
@@ -287,7 +287,7 @@ export default function CalendarPage() {
             try {
                 // Get provider info for specialty
                 const provider = providersList.find(p => p.id === formData.providerId)
-                const providerType = provider?.profile?.provider_type
+                const providerType = (provider as any)?.profile?.provider_type
                 
                 const result = await billingApi.getModifierSuggestions({
                     code: formData.serviceCode,
@@ -759,7 +759,6 @@ export default function CalendarPage() {
                     )}
                 </div>
             )}
-            </div>
 
             {/* Calendar */}
             <div className="calendar-container">
@@ -868,7 +867,7 @@ export default function CalendarPage() {
                                 {(cptSuggestions.length > 0 ? cptSuggestions : cptCodes).map(c => (
                                     <option key={c.code} value={c.code}>
                                         {c.code} - {c.description}
-                                        {cptSuggestions.length > 0 && c.duration_min && c.duration_max && 
+                                        {cptSuggestions.length > 0 && 'duration_min' in c && 'duration_max' in c &&
                                             ` (${c.duration_min}-${c.duration_max} min)`
                                         }
                                     </option>

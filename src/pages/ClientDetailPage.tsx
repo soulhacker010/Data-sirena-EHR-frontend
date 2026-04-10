@@ -113,11 +113,6 @@ export default function ClientDetailPage() {
     const [deleteDocId, setDeleteDocId] = useState<string | null>(null)
     const [deleteDocName, setDeleteDocName] = useState<string | null>(null)
     
-    // Derived state for billing
-    const balance = invoices.reduce((sum, inv) => sum + Number(inv.balance || 0), 0)
-    const selectedOutstandingInvoice = invoices.find(inv => inv.status !== 'paid' && Number(inv.balance || 0) > 0)
-    const documents = client?.documents || []
-
     // Payment form state
     const [paymentAmount, setPaymentAmount] = useState('')
     const [paymentMethod, setPaymentMethod] = useState('credit_card')
@@ -150,12 +145,12 @@ export default function ClientDetailPage() {
                 const [clientData, notesRes, appointmentsRes] = await Promise.all([
                     clientsApi.getById(id),
                     notesApi.getAll({ client_id: id, page_size: 100 }),
-                    appointmentsApi.getAll({ client_id: id, page_size: 100 }),
+                    appointmentsApi.getAll({ client_id: id, start_date: '2020-01-01', end_date: '2030-12-31' }),
                 ])
                 setClient(clientData)
                 setAuthorizations(clientData.authorizations || [])
                 setClientNotes(notesRes.results)
-                setAppointments(appointmentsRes.results)
+                setAppointments(appointmentsRes)
 
                 if (canAccessBilling) {
                     const [invoicesRes, paymentsRes, claimsData] = await Promise.all([

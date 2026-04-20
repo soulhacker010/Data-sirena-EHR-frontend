@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Modal from './Modal'
 import { clientSchema } from '../../lib/validationSchemas'
+import { calculateAge } from '../../utils/dates'
 import {
     User,
     Phone,
@@ -140,8 +141,13 @@ export default function AddClientModal({ isOpen, onClose, onSubmit }: AddClientM
                                 name="dateOfBirth"
                                 value={formData.dateOfBirth}
                                 onChange={handleChange}
+                                min="1900-01-01"
+                                max={new Date().toISOString().split('T')[0]}
                                 className={`form-input-basic${errors.dateOfBirth ? ' input-error' : ''}`}
                             />
+                            {formData.dateOfBirth && (
+                                <span className="field-hint">Age: {calculateAge(formData.dateOfBirth)} years</span>
+                            )}
                             {errors.dateOfBirth && <span className="field-error">{errors.dateOfBirth}</span>}
                         </div>
 

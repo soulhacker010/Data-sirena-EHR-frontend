@@ -40,4 +40,14 @@ export const authApi = {
         const { data } = await apiClient.put<{ message: string }>('/auth/password/', payload)
         return data
     },
+
+    requestPasswordReset: async (email: string): Promise<{ message: string }> => {
+        const { data } = await apiClient.post<{ message: string }>('/auth/password-reset/', { email })
+        return data
+    },
+
+    confirmPasswordReset: async (uid: string, token: string, new_password: string): Promise<{ message: string }> => {
+        const { data } = await apiClient.post<{ message: string }>('/auth/password-reset/confirm/', { uid, token, new_password })
+        return data
+    },
 }

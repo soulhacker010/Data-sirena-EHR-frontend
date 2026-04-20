@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
+import { getApiErrorMessage } from '../utils/errors'
 import { DashboardLayout } from '../components/layout'
 import { Modal, EmptyState, PageSkeleton } from '../components/ui'
 import { usersApi } from '../api'
@@ -63,8 +64,8 @@ export default function UsersPage() {
             setIsLoading(true)
             const res = await usersApi.getAll({ page_size: 200 })
             setUsers(res.results)
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to load users')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to load users'))
         } finally {
             setIsLoading(false)
         }
@@ -133,13 +134,8 @@ export default function UsersPage() {
             setIsAddModalOpen(false)
             resetForm()
             loadUsers()
-        } catch (err: any) {
-            const errData = err?.response?.data
-            if (errData?.email) {
-                toast.error(`Email: ${errData.email}`)
-            } else {
-                toast.error(errData?.detail || 'Failed to add user')
-            }
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to add user'))
         } finally {
             setIsSaving(false)
         }
@@ -162,8 +158,8 @@ export default function UsersPage() {
             setEditingUser(null)
             resetForm()
             loadUsers()
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to update user')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to update user'))
         } finally {
             setIsSaving(false)
         }
@@ -176,8 +172,8 @@ export default function UsersPage() {
             await usersApi.update(user.id, { is_active: !user.is_active })
             toast.success(`${user.first_name} ${user.last_name} ${user.is_active ? 'deactivated' : 'activated'}`)
             loadUsers()
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to update status')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to update status'))
         } finally {
             setIsSaving(false)
         }

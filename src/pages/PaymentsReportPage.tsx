@@ -23,7 +23,7 @@ const formatDate = (date: string) =>
     new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 
 const paymentMethodLabel = (value: string) => {
-    if (value === 'credit_card' || value === 'stripe') return 'Card / Stripe'
+    if (value === 'credit_card' || value === 'stripe') return 'Credit Card'
     if (value === 'eft') return 'EFT Transfer'
     if (value === 'check') return 'Check'
     if (value === 'cash') return 'Cash'
@@ -166,7 +166,7 @@ export default function PaymentsReportPage() {
                     <div>
                         <h2 className="card-title" style={{ marginBottom: '0.35rem' }}>Payments Overview</h2>
                         <p className="text-secondary" style={{ margin: 0 }}>
-                            Recent invoice payment activity including Stripe card payments, manual entries, and refunds.
+                            Recent invoice payment activity including card payments, manual entries, and refunds.
                         </p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>

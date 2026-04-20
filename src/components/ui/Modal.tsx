@@ -59,12 +59,18 @@ export default function Modal({
             className="modal-overlay"
             ref={overlayRef}
             onClick={handleOverlayClick}
+            role="presentation"
         >
-            <div className={`modal-container ${sizeClasses[size]}`}>
+            <div
+                className={`modal-container ${sizeClasses[size]}`}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="modal-title"
+            >
                 <div className="modal-header">
-                    <h2 className="modal-title">{title}</h2>
+                    <h2 className="modal-title" id="modal-title">{title}</h2>
                     {showCloseButton && (
-                        <button onClick={onClose} className="modal-close">
+                        <button onClick={onClose} className="modal-close" aria-label="Close dialog">
                             <X size={20} weight="bold" />
                         </button>
                     )}

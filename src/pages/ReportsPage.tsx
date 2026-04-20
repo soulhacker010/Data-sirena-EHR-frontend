@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
+import { getApiErrorMessage } from '../utils/errors'
 import { Link } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { PageSkeleton } from '../components/ui'
@@ -47,8 +48,8 @@ export default function ReportsPage() {
                 setBillingData(getSettledValue(billing))
                 setPaymentsData(getSettledValue(payments))
                 setMissingNotes(getSettledValue(notes))
-            } catch (err: any) {
-                toast.error(err?.response?.data?.detail || 'Failed to load reports')
+            } catch (err: unknown) {
+                toast.error(getApiErrorMessage(err, 'Failed to load reports'))
             } finally {
                 setIsLoading(false)
             }

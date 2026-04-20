@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
+import { getApiErrorMessage } from '../utils/errors'
 import { DashboardLayout } from '../components/layout'
 import { PageSkeleton } from '../components/ui'
 import { useAuth } from '../context'
@@ -69,7 +70,7 @@ export default function SettingsPage() {
     const [notifications, setNotifications] = useState({
         email_appointments: true,
         email_billing: true,
-        email_notes: false,
+        email_notes: true,
         sms_reminders: true,
         auth_alerts: true,
         denial_alerts: true
@@ -114,13 +115,15 @@ export default function SettingsPage() {
                     const { default: apiClient } = await import('../api/client')
                     const npiRes = await apiClient.get('/auth/npis/')
                     setNpis(npiRes.data || [])
-                } catch { /* no npis yet */ }
+                } catch (err: unknown) {
+                    toast.error(getApiErrorMessage(err, 'Failed to load NPIs'))
+                }
 
                 // Notification preferences
                 const prefs = await settingsApi.getNotificationPreferences()
                 setNotifications(prefs)
-            } catch (err: any) {
-                toast.error(err?.response?.data?.detail || 'Failed to load settings')
+            } catch (err: unknown) {
+                toast.error(getApiErrorMessage(err, 'Failed to load settings'))
             } finally {
                 setIsLoading(false)
             }
@@ -137,8 +140,8 @@ export default function SettingsPage() {
                 phone: profile.phone,
             })
             toast.success('Profile updated successfully')
-        } catch (err: any) {
-            toast.error(err?.response?.data?.message || 'Failed to update profile')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to update profile'))
         } finally {
             setIsProfileSaving(false)
         }
@@ -177,16 +180,16 @@ export default function SettingsPage() {
             setPasswordData({ currentPassword: '', newPassword: '', confirmPassword: '' })
             setPasswordErrors({})
             toast.success('Password updated successfully!')
-        } catch (err: any) {
-            const detail = err?.response?.data
-            if (typeof detail === 'object') {
+        } catch (err: unknown) {
+            const axiosData = (err as { response?: { data?: Record<string, unknown> } })?.response?.data
+            if (axiosData && typeof axiosData === 'object' && !('detail' in axiosData)) {
                 const fieldErrors: Record<string, string> = {}
-                Object.entries(detail).forEach(([key, val]) => {
+                Object.entries(axiosData).forEach(([key, val]) => {
                     fieldErrors[key] = Array.isArray(val) ? (val as string[])[0] : String(val)
                 })
                 setPasswordErrors(fieldErrors)
             } else {
-                toast.error('Failed to update password')
+                toast.error(getApiErrorMessage(err, 'Failed to update password'))
             }
         } finally {
             setIsSaving(false)
@@ -206,8 +209,8 @@ export default function SettingsPage() {
             setSaved(true)
             toast.success('Practice settings saved')
             setTimeout(() => setSaved(false), 3000)
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to save settings')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to save settings'))
         } finally {
             setIsSaving(false)
         }
@@ -237,8 +240,8 @@ export default function SettingsPage() {
             setNpis(prev => [...prev, data])
             setNewNpi({ npi_number: '', business_name: '' })
             toast.success('NPI added')
-        } catch (err: any) {
-            toast.error(err?.response?.data?.npi_number?.[0] || 'Failed to add NPI')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to add NPI'))
         } finally {
             setIsNpiSaving(false)
         }
@@ -264,10 +267,7 @@ export default function SettingsPage() {
             toast.success('Notification preferences saved')
             setTimeout(() => setSaved(false), 3000)
         } catch (err: unknown) {
-            const msg = ((err as Record<string, unknown>)?.response as Record<string, unknown>)?.data
-                ? (((err as Record<string, unknown>).response as Record<string, unknown>).data as Record<string, string>)?.detail || 'Failed to save preferences'
-                : 'Failed to save preferences'
-            toast.error(msg)
+            toast.error(getApiErrorMessage(err, 'Failed to save preferences'))
         } finally {
             setIsSaving(false)
         }
@@ -548,18 +548,20 @@ export default function SettingsPage() {
                                     { key: 'auth_alerts', label: 'Authorization expiration alerts' },
                                     { key: 'denial_alerts', label: 'Claim denial alerts' },
                                 ].map(pref => (
-                                    <label key={pref.key} className="toggle-row">
+                                    <div key={pref.key} className="toggle-row">
                                         <span>{pref.label}</span>
-                                        <input
-                                            type="checkbox"
-                                            className="toggle-checkbox"
-                                            checked={notifications[pref.key as keyof typeof notifications]}
-                                            onChange={(e) => setNotifications(prev => ({
-                                                ...prev,
-                                                [pref.key]: e.target.checked
-                                            }))}
-                                        />
-                                    </label>
+                                        <label className="toggle-label">
+                                            <input
+                                                type="checkbox"
+                                                checked={notifications[pref.key as keyof typeof notifications]}
+                                                onChange={(e) => setNotifications(prev => ({
+                                                    ...prev,
+                                                    [pref.key]: e.target.checked
+                                                }))}
+                                            />
+                                            <span className="toggle-switch"></span>
+                                        </label>
+                                    </div>
                                 ))}
                             </div>
 

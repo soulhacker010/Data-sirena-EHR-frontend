@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { MagnifyingGlass, X, User, SpinnerGap } from '@phosphor-icons/react'
 import { clientsApi } from '../../api'
+import { formatDateSafe } from '../../utils/dates'
 
 interface Client {
     id: string
@@ -19,9 +20,7 @@ interface ClientSearchProps {
 
 const formatDate = (iso: string): string => {
     if (!iso) return ''
-    const d = new Date(iso)
-    if (isNaN(d.getTime())) return iso
-    return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+    return formatDateSafe(iso, { month: '2-digit', day: '2-digit', year: 'numeric' })
 }
 
 export default function ClientSearch({

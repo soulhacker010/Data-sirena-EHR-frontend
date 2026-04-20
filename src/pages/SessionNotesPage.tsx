@@ -5,7 +5,7 @@ import { DashboardLayout } from '../components/layout'
 import { useAuth } from '../context'
 import { PageSkeleton } from '../components/ui'
 import { Modal, ConfirmDialog, ActionMenu, EmptyState } from '../components/ui'
-import { notesApi, clientsApi, usersApi, getApiErrorMessage } from '../api'
+import { notesApi, clientsApi, lookupsApi, getApiErrorMessage } from '../api'
 import type { SessionNote, Client, User } from '../types'
 import {
     MagnifyingGlass,
@@ -113,7 +113,7 @@ export default function SessionNotesPage() {
             const response = await notesApi.getAll(params)
             setNotes(response.results)
             setTotalCount(response.count)
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to load notes'))
         }
     }, [statusFilter, providerFilter, clientFilter, serviceCodeFilter, dateFrom, dateTo])
@@ -125,11 +125,11 @@ export default function SessionNotesPage() {
             try {
                 const [clientsRes, providersRes] = await Promise.all([
                     clientsApi.getAll({ page_size: 100 }),
-                    usersApi.getAll({ page_size: 100 }).catch(() => ({ results: [], count: 0 })),
+                    lookupsApi.getProviders(),
                 ])
                 setClientsList(clientsRes.results)
-                setProvidersList(providersRes.results)
-            } catch (err: any) {
+                setProvidersList(providersRes as unknown as User[])
+            } catch (err: unknown) {
                 toast.error('Failed to load filter data')
             } finally {
                 setIsLoading(false)
@@ -231,7 +231,7 @@ export default function SessionNotesPage() {
             const fullNote = await notesApi.getById(note.id)
             setSelectedNote(fullNote)
             return fullNote
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to load note details'))
             return null
         } finally {
@@ -271,7 +271,7 @@ export default function SessionNotesPage() {
                 const fullNote = await notesApi.getById(noteIdParam)
                 setSelectedNote(fullNote)
                 setIsViewModalOpen(true)
-            } catch (err: any) {
+            } catch (err: unknown) {
                 toast.error(getApiErrorMessage(err, 'Failed to load note details'))
             } finally {
                 setIsLoadingNoteDetail(false)
@@ -331,7 +331,7 @@ export default function SessionNotesPage() {
             await notesApi.delete(selectedNote.id)
             toast.success('Note deleted successfully')
             fetchNotes()
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to delete note'))
         } finally {
             setIsDeleting(false)
@@ -372,7 +372,7 @@ export default function SessionNotesPage() {
             setIsNoteEditorOpen(false)
             setSelectedNote(null)
             fetchNotes()
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to save note'))
         } finally {
             setIsSaving(false)
@@ -401,7 +401,7 @@ export default function SessionNotesPage() {
                 toast.success('Note signed successfully')
             }
             fetchNotes()
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, signatureMode === 'cosign' ? 'Failed to co-sign note' : 'Failed to sign note'))
         } finally {
             setIsSaving(false)
@@ -437,7 +437,7 @@ export default function SessionNotesPage() {
             })
             toast.success('Co-sign request sent')
             fetchNotes()
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to send co-sign request'))
         } finally {
             setIsSaving(false)

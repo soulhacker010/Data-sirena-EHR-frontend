@@ -1,11 +1,11 @@
 ﻿import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
+import { getApiErrorMessage } from '../utils/errors'
 import { useParams, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import Modal from '../components/ui/Modal'
 import { PageSkeleton } from '../components/ui'
 import { billingApi } from '../api'
-import StripePaymentForm from '../components/billing/StripePaymentForm'
 import type { Invoice, Payment } from '../types'
 import {
     ArrowLeft,
@@ -34,8 +34,6 @@ export default function InvoiceDetailPage() {
     const [paymentMethod, setPaymentMethod] = useState('credit_card')
     const [paymentReference, setPaymentReference] = useState('')
     const [isSendingEmail, setIsSendingEmail] = useState(false)
-    const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null)
-    const [isStripeLoading, setIsStripeLoading] = useState(false)
 
     const refreshInvoiceData = async (invoiceId: string) => {
         const [inv, paymentsRes] = await Promise.all([
@@ -53,8 +51,8 @@ export default function InvoiceDetailPage() {
             setIsLoading(true)
             try {
                 await refreshInvoiceData(id)
-            } catch (err: any) {
-                toast.error(err?.response?.data?.detail || 'Failed to load invoice')
+            } catch (err: unknown) {
+                toast.error(getApiErrorMessage(err, 'Failed to load invoice'))
                 navigate('/billing')
             } finally {
                 setIsLoading(false)
@@ -93,52 +91,20 @@ export default function InvoiceDetailPage() {
             setShowPaymentModal(false)
             setPaymentAmount('')
             setPaymentReference('')
-            setStripeClientSecret(null)
             await refreshInvoiceData(invoice.id)
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to record payment')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to record payment'))
         }
     }
 
-    const handleStripePayment = async () => {
-        if (!invoice || !paymentAmount) return
-        const amount = parseFloat(paymentAmount)
-        if (isNaN(amount) || amount <= 0) {
-            toast.error('Amount must be greater than zero')
-            return
-        }
-
-        setIsStripeLoading(true)
-        try {
-            const { client_secret } = await billingApi.createStripePayment({
-                invoice_id: invoice.id,
-                amount,
-            })
-            setStripeClientSecret(client_secret)
-        } catch (err: any) {
-            toast.error(err?.response?.data?.message || 'Failed to initialize payment')
-        } finally {
-            setIsStripeLoading(false)
-        }
-    }
-
-    const handleStripeSuccess = async () => {
-        if (!invoice) return
-        toast.success('Payment successful!')
-        setStripeClientSecret(null)
-        setShowPaymentModal(false)
-        setPaymentAmount('')
-        setPaymentReference('')
-        await refreshInvoiceData(invoice.id)
-    }
 
     const handleDownloadPDF = async () => {
         if (!invoice) return
         try {
             await billingApi.downloadPDF(invoice.id, invoice.invoice_number)
             toast.success('Invoice PDF downloaded')
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to download PDF')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to download PDF'))
         }
     }
 
@@ -167,9 +133,8 @@ export default function InvoiceDetailPage() {
         try {
             await billingApi.emailInvoice(id, toEmail.trim())
             toast.success(`Invoice emailed to ${toEmail.trim()}`)
-        } catch (err: any) {
-            const msg = err?.response?.data?.error || 'Failed to send invoice email'
-            toast.error(msg)
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to send invoice email'))
         } finally {
             setIsSendingEmail(false)
         }
@@ -378,19 +343,9 @@ export default function InvoiceDetailPage() {
                 isOpen={showPaymentModal}
                 onClose={() => {
                     setShowPaymentModal(false)
-                    setStripeClientSecret(null)
                 }}
                 title="Record Payment"
             >
-                {stripeClientSecret ? (
-                    <StripePaymentForm
-                        clientSecret={stripeClientSecret}
-                        amount={parseFloat(paymentAmount)}
-                        invoiceNumber={invoice.invoice_number}
-                        onSuccess={handleStripeSuccess}
-                        onCancel={() => setStripeClientSecret(null)}
-                    />
-                ) : (
                     <div className="payment-modal-form">
                         <div className="form-group">
                             <label>Payment Amount</label>
@@ -436,24 +391,20 @@ export default function InvoiceDetailPage() {
                                 className="btn-outline"
                                 onClick={() => {
                                     setShowPaymentModal(false)
-                                    setStripeClientSecret(null)
                                 }}
                             >
                                 Cancel
                             </button>
                             <button
                                 className="btn-primary"
-                                onClick={paymentMethod === 'credit_card' ? handleStripePayment : handleRecordPayment}
-                                disabled={!paymentAmount || parseFloat(paymentAmount) <= 0 || isStripeLoading}
+                                onClick={handleRecordPayment}
+                                disabled={!paymentAmount || parseFloat(paymentAmount) <= 0}
                             >
-                                {paymentMethod === 'credit_card' ? <CreditCard size={18} /> : <Plus size={18} />}
-                                {paymentMethod === 'credit_card'
-                                    ? (isStripeLoading ? 'Loading Stripe...' : 'Continue to Card Payment')
-                                    : 'Record Payment'}
+                                <Plus size={18} />
+                                Record Payment
                             </button>
                         </div>
                     </div>
-                )}
             </Modal>
         </DashboardLayout>
     )

@@ -53,7 +53,7 @@ export function CardSkeleton() {
 
 export function PageSkeleton() {
     return (
-        <div className="page-skeleton">
+        <div className="page-skeleton" role="status" aria-label="Loading page content">
             {/* Header skeleton */}
             <div className="skeleton-header">
                 <Skeleton height="28px" width="200px" />

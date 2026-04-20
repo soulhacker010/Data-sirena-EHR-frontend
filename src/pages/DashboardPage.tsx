@@ -5,6 +5,7 @@ import { useAuth } from '../context'
 import { dashboardApi } from '../api'
 import { BILLING_ROLES, SCHEDULING_ROLES, CLINICAL_ROLES } from '../utils/permissions'
 import toast from 'react-hot-toast'
+import { getApiErrorMessage } from '../utils/errors'
 import type { DashboardStats, DashboardAppointment } from '../types'
 import {
     UsersThree,
@@ -96,8 +97,8 @@ export default function DashboardPage() {
             try {
                 const data = await dashboardApi.getStats()
                 setStats(data)
-            } catch (err: any) {
-                const message = err?.response?.data?.detail || 'Failed to load dashboard data'
+            } catch (err: unknown) {
+                const message = getApiErrorMessage(err, 'Failed to load dashboard data')
                 setError(message)
                 toast.error(message)
             } finally {
@@ -247,9 +248,9 @@ export default function DashboardPage() {
                 )}
             </div>
 
-            {/* Main Grid - Chart + Calendar/Appointments */}
+            {/* Main Grid */}
             <div className="dashboard-grid">
-                {/* Left: Billing Summary (billing roles only) or Clinical Summary */}
+                {/* Left: Billing Summary (billing roles) or Upcoming Appointments (clinical/scheduling) */}
                 <div className="space-y-6">
                     {canAccessBilling ? (
                         <>
@@ -320,47 +321,44 @@ export default function DashboardPage() {
                             </div>
                         </>
                     ) : (
+                        /* Non-billing: show Upcoming Appointments prominently */
                         <div className="card">
                             <div className="card-header">
-                                <h2 className="card-title">Clinical Overview</h2>
-                                <span className="text-sm text-gray-500 font-semibold">This Month</span>
+                                <h2 className="card-title">Upcoming Appointments</h2>
+                                <button className="btn-secondary btn-sm" onClick={() => navigate('/calendar')}>
+                                    <CalendarCheck size={16} /> View Calendar
+                                </button>
                             </div>
-                            <div className="card-body">
-                                <div className="dashboard-billing-grid">
-                                    <div className="dashboard-billing-item" onClick={() => navigate('/clients')} style={{ cursor: 'pointer' }}>
-                                        <div className="dashboard-billing-item-icon teal">
-                                            <UsersThree size={20} weight="fill" />
+                            <div className="card-body pt-0">
+                                {stats.upcoming_appointments.length === 0 ? (
+                                    <p style={{ color: '#94A3B8', fontWeight: 600, textAlign: 'center', padding: '2rem 0' }}>
+                                        No upcoming appointments
+                                    </p>
+                                ) : (
+                                    stats.upcoming_appointments.map((apt: DashboardAppointment, idx: number) => (
+                                        <div
+                                            key={apt.id}
+                                            className="appointment-item"
+                                            onClick={() => navigate('/calendar')}
+                                            style={{ cursor: 'pointer' }}
+                                        >
+                                            <div className={`appointment-avatar ${avatarColors[idx % avatarColors.length]}`}>
+                                                {apt.client_name.split(' ').map(n => n[0]).join('')}
+                                            </div>
+                                            <div className="appointment-info">
+                                                <p className="appointment-name">{apt.client_name}</p>
+                                                <p className="appointment-service">{apt.service_code} — {apt.provider_name}</p>
+                                            </div>
+                                            <span className="appointment-time">• {formatTime(apt.start_time)}</span>
                                         </div>
-                                        <div className="dashboard-billing-item-content">
-                                            <p className="dashboard-billing-item-label">Active Clients</p>
-                                            <p className="dashboard-billing-item-value">{stats.total_clients}</p>
-                                        </div>
-                                    </div>
-                                    <div className="dashboard-billing-item" onClick={() => navigate('/notes')} style={{ cursor: 'pointer' }}>
-                                        <div className="dashboard-billing-item-icon yellow">
-                                            <FileText size={20} weight="fill" />
-                                        </div>
-                                        <div className="dashboard-billing-item-content">
-                                            <p className="dashboard-billing-item-label">Pending Notes</p>
-                                            <p className="dashboard-billing-item-value">{stats.pending_notes}</p>
-                                        </div>
-                                    </div>
-                                    <div className="dashboard-billing-item" onClick={() => navigate('/calendar')} style={{ cursor: 'pointer' }}>
-                                        <div className="dashboard-billing-item-icon green">
-                                            <CalendarCheck size={20} weight="fill" />
-                                        </div>
-                                        <div className="dashboard-billing-item-content">
-                                            <p className="dashboard-billing-item-label">Sessions This Month</p>
-                                            <p className="dashboard-billing-item-value">{stats.sessions_this_month}</p>
-                                        </div>
-                                    </div>
-                                </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     )}
                 </div>
 
-                {/* Right: Calendar + Appointments */}
+                {/* Right: Mini Calendar (+ Upcoming Appointments for billing users) */}
                 <div className="space-y-6">
                     {/* Mini Calendar */}
                     <div className="card" onClick={() => navigate('/calendar')} style={{ cursor: 'pointer' }}>
@@ -382,37 +380,39 @@ export default function DashboardPage() {
                         </div>
                     </div>
 
-                    {/* Upcoming Appointments */}
-                    <div className="card">
-                        <div className="card-header">
-                            <h2 className="card-title">Upcoming Appointments</h2>
-                        </div>
-                        <div className="card-body pt-0">
-                            {stats.upcoming_appointments.length === 0 ? (
-                                <p style={{ color: '#94A3B8', fontWeight: 600, textAlign: 'center', padding: '2rem 0' }}>
-                                    No upcoming appointments
-                                </p>
-                            ) : (
-                                stats.upcoming_appointments.map((apt: DashboardAppointment, idx: number) => (
-                                    <div
-                                        key={apt.id}
-                                        className="appointment-item"
-                                        onClick={() => navigate('/calendar')}
-                                        style={{ cursor: 'pointer' }}
-                                    >
-                                        <div className={`appointment-avatar ${avatarColors[idx % avatarColors.length]}`}>
-                                            {apt.client_name.split(' ').map(n => n[0]).join('')}
+                    {/* Upcoming Appointments — only shown here for billing users (clinical users see it on the left) */}
+                    {canAccessBilling && (
+                        <div className="card">
+                            <div className="card-header">
+                                <h2 className="card-title">Upcoming Appointments</h2>
+                            </div>
+                            <div className="card-body pt-0">
+                                {stats.upcoming_appointments.length === 0 ? (
+                                    <p style={{ color: '#94A3B8', fontWeight: 600, textAlign: 'center', padding: '2rem 0' }}>
+                                        No upcoming appointments
+                                    </p>
+                                ) : (
+                                    stats.upcoming_appointments.map((apt: DashboardAppointment, idx: number) => (
+                                        <div
+                                            key={apt.id}
+                                            className="appointment-item"
+                                            onClick={() => navigate('/calendar')}
+                                            style={{ cursor: 'pointer' }}
+                                        >
+                                            <div className={`appointment-avatar ${avatarColors[idx % avatarColors.length]}`}>
+                                                {apt.client_name.split(' ').map(n => n[0]).join('')}
+                                            </div>
+                                            <div className="appointment-info">
+                                                <p className="appointment-name">{apt.client_name}</p>
+                                                <p className="appointment-service">{apt.service_code} — {apt.provider_name}</p>
+                                            </div>
+                                            <span className="appointment-time">• {formatTime(apt.start_time)}</span>
                                         </div>
-                                        <div className="appointment-info">
-                                            <p className="appointment-name">{apt.client_name}</p>
-                                            <p className="appointment-service">{apt.service_code} — {apt.provider_name}</p>
-                                        </div>
-                                        <span className="appointment-time">• {formatTime(apt.start_time)}</span>
-                                    </div>
-                                ))
-                            )}
+                                    ))
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
                 </div>
             </div>
         </DashboardLayout>

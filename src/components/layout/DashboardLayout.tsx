@@ -18,19 +18,19 @@ export default function DashboardLayout({ children, title: _title = 'Dashboard' 
                 {/* Top Header */}
                 <header className="app-header">
                     {/* Search */}
-                    <div className="header-search">
-                        <MagnifyingGlass size={18} weight="regular" className="text-gray-400" />
-                        <input type="text" placeholder="Search keywords..." />
+                    <div className="header-search" role="search">
+                        <MagnifyingGlass size={18} weight="regular" className="text-gray-400" aria-hidden="true" />
+                        <input type="text" placeholder="Search keywords..." aria-label="Search" />
                     </div>
 
                     {/* Right Actions */}
                     <div className="header-actions">
-                        <select className="header-select">
+                        <select className="header-select" aria-label="Time period">
                             <option>Week</option>
                             <option>Month</option>
                             <option>Year</option>
                         </select>
-                        <button className="header-export-btn">
+                        <button className="header-export-btn" aria-label="Export data">
                             <Export size={16} weight="bold" />
                             Export
                         </button>

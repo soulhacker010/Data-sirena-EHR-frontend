@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { PageSkeleton } from '../components/ui'
-import { appointmentsApi, clientsApi, usersApi, billingApi, getApiErrorMessage } from '../api'
+import { appointmentsApi, clientsApi, lookupsApi, billingApi, getApiErrorMessage } from '../api'
 import type { CPTSuggestion } from '../api/billing'
 import { useAuth } from '../context'
 import FullCalendar from '@fullcalendar/react'
@@ -26,21 +26,7 @@ import {
     ArrowsClockwise
 } from '@phosphor-icons/react'
 import { Modal, ConfirmDialog } from '../components/ui'
-
-// CPT Codes (static reference)
-const cptCodes = [
-    { code: '90834', description: 'Psychotherapy 45 min', defaultUnits: 1, color: '#6366F1' },
-    { code: '90837', description: 'Psychotherapy 60 min', defaultUnits: 1, color: '#8B5CF6' },
-    { code: '90847', description: 'Family Therapy w/ Patient', defaultUnits: 1, color: '#EC4899' },
-    { code: '90846', description: 'Family Therapy w/o Patient', defaultUnits: 1, color: '#F472B6' },
-    { code: '90791', description: 'Psychiatric Diagnostic Eval', defaultUnits: 1, color: '#14B8A6' },
-    { code: '97151', description: 'Behavior Assessment', defaultUnits: 4, color: '#F59E0B' },
-    { code: '97153', description: 'Adaptive Behavior Treatment', defaultUnits: 8, color: '#EF4444' },
-    { code: '97155', description: 'Behavior Treatment w/ Modification', defaultUnits: 4, color: '#F97316' },
-    { code: '97156', description: 'Family Adaptive Behavior Treatment', defaultUnits: 4, color: '#10B981' },
-    { code: '97157', description: 'Multiple-Family Group', defaultUnits: 4, color: '#06B6D4' },
-    { code: '97158', description: 'Group Adaptive Behavior Treatment', defaultUnits: 4, color: '#0EA5E9' },
-]
+import { cptCodes } from '../constants/cptCodes'
 
 // POS codes for BUILD 6.3
 const posCodes = [
@@ -115,6 +101,7 @@ export default function CalendarPage() {
     const [isEditMode, setIsEditMode] = useState(false)
     const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
     const [isCancelSeriesDialogOpen, setIsCancelSeriesDialogOpen] = useState(false)
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
     const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
     const [isSaving, setIsSaving] = useState(false)
     
@@ -173,7 +160,7 @@ export default function CalendarPage() {
             if (statusFilter) filters.status = statusFilter as AppointmentFilters['status']
             const data = await appointmentsApi.getAll(filters)
             setAppointments(data)
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to load appointments'))
         }
     }, [getDateRange, providerFilter, serviceFilter, statusFilter])
@@ -183,23 +170,26 @@ export default function CalendarPage() {
         const loadData = async () => {
             setIsLoading(true)
             try {
-                // Fetch clients and providers in parallel
+                // Fetch clients and providers in parallel.
+                // NOTE: use lookupsApi.getProviders() (accessible to all roles) NOT
+                // usersApi.getAll() which requires admin and silently returns [] for clinicians,
+                // breaking "My Schedule" and preventing appointments from loading.
                 const [clientsRes, providersRes] = await Promise.all([
                     clientsApi.getAll({ page_size: 100 }),
-                    usersApi.getAll({ page_size: 100 }).catch(() => ({ results: [], count: 0 })),
+                    lookupsApi.getProviders(),
                 ])
                 setClientsList(clientsRes.results)
-                setProvidersList(providersRes.results)
+                setProvidersList(providersRes as unknown as User[])
 
                 // 5.5 "My Schedule" — default provider filter + form to logged-in user
-                if (user?.id && providersRes.results.some((p: User) => p.id === user.id)) {
+                if (user?.id && providersRes.some(p => p.id === user.id)) {
                     setProviderFilter(user.id)
                     setFormData(prev => ({ ...prev, providerId: user.id }))
-                } else if (providersRes.results.length === 1) {
-                    setProviderFilter(providersRes.results[0].id)
-                    setFormData(prev => ({ ...prev, providerId: providersRes.results[0].id }))
+                } else if (providersRes.length === 1) {
+                    setProviderFilter(providersRes[0].id)
+                    setFormData(prev => ({ ...prev, providerId: providersRes[0].id }))
                 }
-            } catch (err: any) {
+            } catch (err: unknown) {
                 toast.error('Failed to load filter data')
             } finally {
                 setIsLoading(false)
@@ -408,7 +398,7 @@ export default function CalendarPage() {
             })
             toast.success('Appointment rescheduled')
             fetchAppointments()
-        } catch (err: any) {
+        } catch (err: unknown) {
             dropInfo.revert()
             toast.error(getApiErrorMessage(err, 'Failed to reschedule'))
         }
@@ -498,7 +488,7 @@ export default function CalendarPage() {
             await appointmentsApi.updateStatus(selectedAppointment.id, 'cancelled')
             toast.success('Appointment cancelled')
             fetchAppointments()
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to cancel appointment'))
         } finally {
             setIsSaving(false)
@@ -516,8 +506,8 @@ export default function CalendarPage() {
             await appointmentsApi.updateStatus(selectedAppointment.id, 'attended')
             toast.success('Appointment marked as completed')
             fetchAppointments()
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to update appointment')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to update appointment'))
         } finally {
             setIsSaving(false)
             setIsViewModalOpen(false)
@@ -531,9 +521,24 @@ export default function CalendarPage() {
             await appointmentsApi.updateStatus(selectedAppointment.id, 'no_show')
             toast.success('Appointment marked as no-show')
             fetchAppointments()
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to update appointment')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to update appointment'))
         } finally {
+            setIsViewModalOpen(false)
+            setSelectedAppointment(null)
+        }
+    }
+
+    const handleDeleteAppointment = async () => {
+        if (!selectedAppointment) return
+        try {
+            await appointmentsApi.delete(selectedAppointment.id)
+            toast.success('Appointment deleted')
+            fetchAppointments()
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to delete appointment'))
+        } finally {
+            setIsDeleteDialogOpen(false)
             setIsViewModalOpen(false)
             setSelectedAppointment(null)
         }
@@ -612,7 +617,7 @@ export default function CalendarPage() {
             setIsScheduleModalOpen(false)
             setSelectedAppointment(null)
             fetchAppointments()
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to save appointment'))
         } finally {
             setIsSaving(false)
@@ -1148,7 +1153,7 @@ export default function CalendarPage() {
                             {selectedAppointment.status === 'scheduled' && (
                                 <>
                                     <button className="btn-primary" onClick={handleStartSession}>Start Session</button>
-                                    <button className="btn-secondary" onClick={handleReschedule}>Reschedule</button>
+                                    <button className="btn-secondary" onClick={handleReschedule}>Edit</button>
                                     <button className="btn-secondary" onClick={handleMarkNoShow}>No-Show</button>
                                     <button className="btn-danger-outline" onClick={handleCancelClick}>Cancel</button>
                                     {selectedAppointment.is_recurring && selectedAppointment.series_id && (
@@ -1158,18 +1163,22 @@ export default function CalendarPage() {
                                     )}
                                 </>
                             )}
-                            {(selectedAppointment.status === 'attended') && (
-                                <button className="btn-primary" onClick={handleViewNotes}>View Notes</button>
+                            {selectedAppointment.status === 'attended' && (
+                                <>
+                                    <button className="btn-primary" onClick={handleViewNotes}>View Notes</button>
+                                    <button className="btn-secondary" onClick={handleReschedule}>Edit</button>
+                                </>
                             )}
                             {selectedAppointment.status === 'no_show' && (
                                 <>
-                                    <button className="btn-secondary" onClick={handleReschedule}>Reschedule</button>
+                                    <button className="btn-secondary" onClick={handleReschedule}>Edit</button>
                                     <button className="btn-secondary" onClick={handleMarkComplete}>Mark Complete</button>
                                 </>
                             )}
                             {selectedAppointment.status === 'cancelled' && (
-                                <button className="btn-secondary" onClick={handleReschedule}>Reschedule</button>
+                                <button className="btn-secondary" onClick={handleReschedule}>Edit</button>
                             )}
+                            <button className="btn-danger-outline" onClick={() => setIsDeleteDialogOpen(true)}>Delete</button>
                         </div>
                     </div>
                 )}
@@ -1206,6 +1215,22 @@ export default function CalendarPage() {
                     : ''
                 }
                 confirmLabel="Cancel All Future"
+                variant="danger"
+            />
+
+            {/* Delete Appointment Confirmation Dialog */}
+            <ConfirmDialog
+                isOpen={isDeleteDialogOpen}
+                onClose={() => {
+                    setIsDeleteDialogOpen(false)
+                }}
+                onConfirm={handleDeleteAppointment}
+                title="Delete Appointment"
+                message={selectedAppointment
+                    ? `Permanently delete this appointment with ${aptClientName(selectedAppointment)}? This cannot be undone.`
+                    : ''
+                }
+                confirmLabel="Delete"
                 variant="danger"
             />
         </DashboardLayout>

@@ -13,6 +13,8 @@ import {
 
 // Pages
 import LoginPage from './pages/LoginPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 import DashboardPage from './pages/DashboardPage'
 import ClientsPage from './pages/ClientsPage'
 import ClientDetailPage from './pages/ClientDetailPage'
@@ -46,6 +48,8 @@ function App() {
           <Routes>
             {/* Auth — public */}
             <Route path="/login" element={<LoginPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/reset-password" element={<ResetPasswordPage />} />
 
             {/* Dashboard — everyone (IsAnyAuthenticated) */}
             <Route path="/dashboard" element={<ProtectedRoute allowedRoles={ALL_ROLES}><DashboardPage /></ProtectedRoute>} />

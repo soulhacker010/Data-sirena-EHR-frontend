@@ -7,14 +7,16 @@
  *
  * This utility handles both and returns a readable string.
  */
-export function getApiErrorMessage(err: any, fallback: string = 'Something went wrong'): string {
-    const data = err?.response?.data
+export function getApiErrorMessage(err: unknown, fallback: string = 'Something went wrong'): string {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const axiosErr = err as { response?: { data?: any } }
+    const data = axiosErr?.response?.data
 
     if (!data) return fallback
 
     // Format 1: { detail: "..." }
     if (typeof data === 'string') return data
-    if (data.detail) return data.detail
+    if (data.detail) return String(data.detail)
 
     // Format 2: { field: ["error"] } — DRF validation errors
     if (typeof data === 'object') {

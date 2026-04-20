@@ -40,15 +40,18 @@ export default function ActionMenu({ items }: ActionMenuProps) {
                 className="btn-icon"
                 onClick={() => setIsOpen(!isOpen)}
                 aria-label="Actions"
+                aria-haspopup="true"
+                aria-expanded={isOpen}
             >
                 <DotsThree size={20} weight="bold" />
             </button>
 
             {isOpen && (
-                <div className="action-menu-dropdown">
+                <div className="action-menu-dropdown" role="menu">
                     {items.map((item, index) => (
                         <button
                             key={index}
+                            role="menuitem"
                             className={`action-menu-item ${item.variant === 'danger' ? 'danger' : ''}`}
                             onClick={() => {
                                 item.onClick()

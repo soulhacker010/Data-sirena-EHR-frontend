@@ -3,6 +3,7 @@ import { NavLink, useLocation, useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../../context'
 import { canAccess } from '../../utils/permissions'
 import { clientsApi } from '../../api'
+import { formatDateSafe } from '../../utils/dates'
 import type { UserRole } from '../../types'
 import {
     House,
@@ -167,9 +168,7 @@ export default function Navbar() {
 
     const formatDob = (iso?: string): string => {
         if (!iso) return ''
-        const d = new Date(iso)
-        if (isNaN(d.getTime())) return iso
-        return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' })
+        return formatDateSafe(iso, { month: '2-digit', day: '2-digit', year: 'numeric' })
     }
 
     const handleSignOut = async () => {

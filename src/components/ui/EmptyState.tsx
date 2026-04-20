@@ -32,8 +32,8 @@ export default function EmptyState({
     }
 
     return (
-        <div className={`empty-state ${compact ? 'empty-state-compact' : ''} empty-state-${variant}`}>
-            <div className="empty-state-icon">
+        <div className={`empty-state ${compact ? 'empty-state-compact' : ''} empty-state-${variant}`} role="status">
+            <div className="empty-state-icon" aria-hidden="true">
                 {icon || defaultIcons[variant]}
             </div>
             <h3 className="empty-state-title">{title}</h3>

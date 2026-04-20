@@ -1,13 +1,15 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
-import { CaretDown, CaretRight, FloppyDisk, PencilSimple, Copy } from '@phosphor-icons/react'
+import { CaretDown, CaretRight, FloppyDisk, PencilSimple, Copy, PenNib, CheckCircle, Eye, FilePdf } from '@phosphor-icons/react'
 import DashboardLayout from '../components/layout/DashboardLayout'
 import { MentalStatusExam, RiskAssessment } from '../components/clinical'
+import SignaturePad from '../components/ui/SignaturePad'
 import { intakesApi } from '../api/intakes'
 import type { IntakeAssessment } from '../api/intakes'
 import { useAuth } from '../context'
 import { getApiErrorMessage } from '../utils/errors'
+import { printIntake } from '../utils/printIntake'
 
 // ─── ICD-10 Common Codes (searchable subset) ─────────────────────────────────
 const ICD10_CODES = [
@@ -103,6 +105,14 @@ export default function IntakeEditorPage() {
 
     const isLocked = intake?.is_locked || false
 
+    const [isSigningProvider, setIsSigningProvider] = useState(false)
+    const [isSigningClient, setIsSigningClient] = useState(false)
+    const [isSigning, setIsSigning] = useState(false)
+    const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+    const [showPreview, setShowPreview] = useState(false)
+    const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const isFirstRender = useRef(true)
+
     // ─── Load Data ────────────────────────────────────────────────────────────
     useEffect(() => {
         const loadInitialData = async () => {
@@ -187,6 +197,28 @@ export default function IntakeEditorPage() {
             updateField('intake_risk_factors', [...current, factor])
         }
     }
+
+    // ─── Auto-save (edit mode only, 2s debounce) ─────────────────────────────
+    useEffect(() => {
+        if (!isEditMode || !id || isLocked) return
+        if (isFirstRender.current) { isFirstRender.current = false; return }
+        if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
+        autoSaveTimer.current = setTimeout(async () => {
+            setAutoSaveStatus('saving')
+            try {
+                const updated = await intakesApi.update(id, {
+                    assessment_date: assessmentDate,
+                    intake_data: intakeData,
+                })
+                setIntake(updated)
+                setAutoSaveStatus('saved')
+                setTimeout(() => setAutoSaveStatus('idle'), 2000)
+            } catch {
+                setAutoSaveStatus('idle')
+            }
+        }, 2000)
+        return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current) }
+    }, [intakeData])
 
     // ─── Save ─────────────────────────────────────────────────────────────────
     const handleSave = async () => {
@@ -273,6 +305,22 @@ export default function IntakeEditorPage() {
                         )}
                     </div>
                     <div className="intake-editor-actions">
+                        {autoSaveStatus === 'saving' && <span className="autosave-indicator saving">Saving…</span>}
+                        {autoSaveStatus === 'saved' && <span className="autosave-indicator saved"><CheckCircle size={14} weight="fill" /> Saved</span>}
+                        {intake && (
+                            <button type="button" className="btn-secondary" onClick={() => setShowPreview(true)}>
+                                <Eye size={16} /> Preview
+                            </button>
+                        )}
+                        {intake && (
+                            <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() => printIntake(intake, selectedClient, user || undefined, user?.organization_name)}
+                            >
+                                <FilePdf size={16} /> Export PDF
+                            </button>
+                        )}
                         {!isLocked && (
                             <>
                                 <button type="button" className="btn-secondary" onClick={handleCopyFromPrevious}>
@@ -298,7 +346,7 @@ export default function IntakeEditorPage() {
                 <div className="intake-editor-form">
                     {/* ─── 3.1 Form Header ─────────────────────────────────────── */}
                     <div className="intake-section">
-                        <SectionHeader id="header" title="Client & Provider Information" number="3.1" />
+                        <SectionHeader id="header" title="Client & Provider Information" number="1" />
                         {sections.header && (
                             <div className="intake-section-body">
                                 <div className="intake-grid-2">
@@ -353,14 +401,20 @@ export default function IntakeEditorPage() {
                                                 ))}
                                             </select>
                                         ) : (
-                                            <input
-                                                type="text"
-                                                className="form-input"
-                                                placeholder="No NPIs configured — enter manually"
-                                                value={(intakeData.provider_npi as string) || ''}
-                                                onChange={e => updateField('provider_npi', e.target.value)}
-                                                disabled={isLocked}
-                                            />
+                                            <>
+                                                <input
+                                                    type="text"
+                                                    className="form-input"
+                                                    placeholder="Enter NPI manually"
+                                                    value={(intakeData.provider_npi as string) || ''}
+                                                    onChange={e => updateField('provider_npi', e.target.value)}
+                                                    disabled={isLocked}
+                                                />
+                                                <span className="field-hint" style={{ color: '#f59e0b' }}>
+                                                    No NPIs configured in your organization.{' '}
+                                                    <a href="/settings" style={{ color: '#d97706', fontWeight: 600 }}>Go to Settings → Add NPI</a>
+                                                </span>
+                                            </>
                                         )}
                                     </div>
                                     <div className="form-group">
@@ -381,7 +435,7 @@ export default function IntakeEditorPage() {
 
                     {/* ─── 3.2 Presenting Problem ──────────────────────────────── */}
                     <div className="intake-section">
-                        <SectionHeader id="presenting" title="Presenting Problem / Chief Complaint" number="3.2" />
+                        <SectionHeader id="presenting" title="Presenting Problem / Chief Complaint" number="2" />
                         {sections.presenting && (
                             <div className="intake-section-body">
                                 <textarea
@@ -398,7 +452,7 @@ export default function IntakeEditorPage() {
 
                     {/* ─── 3.3 Diagnosis ────────────────────────────────────────── */}
                     <div className="intake-section">
-                        <SectionHeader id="diagnosis" title="Diagnosis" number="3.3" />
+                        <SectionHeader id="diagnosis" title="Diagnosis" number="3" />
                         {sections.diagnosis && (
                             <div className="intake-section-body">
                                 <div className="form-group">
@@ -467,7 +521,7 @@ export default function IntakeEditorPage() {
 
                     {/* ─── 3.4 Pertinent History ───────────────────────────────── */}
                     <div className="intake-section">
-                        <SectionHeader id="history" title="Pertinent History" number="3.4" />
+                        <SectionHeader id="history" title="Pertinent History" number="4" />
                         {sections.history && (
                             <div className="intake-section-body">
                                 {[
@@ -495,7 +549,7 @@ export default function IntakeEditorPage() {
 
                     {/* ─── 3.5 MSE at Intake ───────────────────────────────────── */}
                     <div className="intake-section">
-                        <SectionHeader id="mse" title="Mental Status Exam at Intake" number="3.5" />
+                        <SectionHeader id="mse" title="Mental Status Exam at Intake" number="5" />
                         {sections.mse && (
                             <div className="intake-section-body">
                                 <MentalStatusExam
@@ -509,7 +563,7 @@ export default function IntakeEditorPage() {
 
                     {/* ─── 3.6 Family / Psychosocial Assessment ────────────────── */}
                     <div className="intake-section">
-                        <SectionHeader id="family" title="Family / Psychosocial Assessment" number="3.6" />
+                        <SectionHeader id="family" title="Family / Psychosocial Assessment" number="6" />
                         {sections.family && (
                             <div className="intake-section-body">
                                 {[
@@ -537,7 +591,7 @@ export default function IntakeEditorPage() {
 
                     {/* ─── 3.7 Risk Factors ────────────────────────────────────── */}
                     <div className="intake-section">
-                        <SectionHeader id="risk" title="Risk Factors" number="3.7" />
+                        <SectionHeader id="risk" title="Risk Factors" number="7" />
                         {sections.risk && (
                             <div className="intake-section-body">
                                 <p className="intake-helper-text">Select all that apply:</p>
@@ -580,7 +634,7 @@ export default function IntakeEditorPage() {
 
                     {/* ─── 3.8 Safety Plan ─────────────────────────────────────── */}
                     <div className="intake-section">
-                        <SectionHeader id="safety" title="Safety Plan" number="3.8" />
+                        <SectionHeader id="safety" title="Safety Plan" number="8" />
                         {sections.safety && (
                             <div className="intake-section-body">
                                 <div className="form-group">
@@ -653,7 +707,7 @@ export default function IntakeEditorPage() {
 
                     {/* ─── 3.9 Strengths, Supports, Goals ──────────────────────── */}
                     <div className="intake-section">
-                        <SectionHeader id="strengths" title="Strengths, Supports & Treatment Goals" number="3.9" />
+                        <SectionHeader id="strengths" title="Strengths, Supports & Treatment Goals" number="9" />
                         {sections.strengths && (
                             <div className="intake-section-body">
                                 <div className="form-group">
@@ -695,7 +749,7 @@ export default function IntakeEditorPage() {
 
                     {/* ─── 3.10 Treatment Length / Frequency ────────────────────── */}
                     <div className="intake-section">
-                        <SectionHeader id="treatment" title="Treatment Length & Frequency" number="3.10" />
+                        <SectionHeader id="treatment" title="Treatment Length & Frequency" number="10" />
                         {sections.treatment && (
                             <div className="intake-section-body">
                                 <div className="intake-grid-2">
@@ -751,7 +805,7 @@ export default function IntakeEditorPage() {
 
                     {/* ─── 3.11 Special Needs ──────────────────────────────────── */}
                     <div className="intake-section">
-                        <SectionHeader id="special" title="Special Needs / Educational Needs" number="3.11" />
+                        <SectionHeader id="special" title="Special Needs / Educational Needs" number="11" />
                         {sections.special && (
                             <div className="intake-section-body">
                                 <textarea
@@ -768,7 +822,7 @@ export default function IntakeEditorPage() {
 
                     {/* ─── 3.12 Footer (Medical Necessity + Signatures) ────────── */}
                     <div className="intake-section">
-                        <SectionHeader id="footer" title="Medical Necessity & Signatures" number="3.12" />
+                        <SectionHeader id="footer" title="Medical Necessity & Signatures" number="12" />
                         {sections.footer && (
                             <div className="intake-section-body">
                                 <div className="form-group">
@@ -786,26 +840,82 @@ export default function IntakeEditorPage() {
                                     <h4>Provider Signature</h4>
                                     {intake?.signed_at ? (
                                         <div className="signature-status signed">
-                                            ✓ Signed by {intake.provider_name} on {new Date(intake.signed_at).toLocaleDateString()}
+                                            <CheckCircle size={16} weight="fill" /> Signed by {intake.provider_name} on {new Date(intake.signed_at).toLocaleDateString()}
+                                        </div>
+                                    ) : intake && !isSigningProvider ? (
+                                        <button
+                                            type="button"
+                                            className="btn-secondary btn-sm"
+                                            onClick={() => setIsSigningProvider(true)}
+                                            disabled={isSigning}
+                                        >
+                                            <PenNib size={16} /> Sign as Provider
+                                        </button>
+                                    ) : intake && isSigningProvider ? (
+                                        <div style={{ marginTop: '0.5rem' }}>
+                                            <SignaturePad
+                                                onSave={async (sig) => {
+                                                    setIsSigning(true)
+                                                    try {
+                                                        const updated = await intakesApi.sign(intake.id, sig)
+                                                        setIntake(updated)
+                                                        setIsSigningProvider(false)
+                                                        toast.success('Intake signed')
+                                                    } catch (err: unknown) {
+                                                        toast.error(getApiErrorMessage(err, 'Failed to sign'))
+                                                    } finally {
+                                                        setIsSigning(false)
+                                                    }
+                                                }}
+                                                onCancel={() => setIsSigningProvider(false)}
+                                            />
                                         </div>
                                     ) : (
-                                        <p className="intake-helper-text">Save the intake first, then sign from the Intakes list page.</p>
+                                        <p className="intake-helper-text">Save the intake first to enable signing.</p>
                                     )}
 
-                                    <h4 style={{ marginTop: '1rem' }}>Client Signature</h4>
+                                    <h4 style={{ marginTop: '1.5rem' }}>Client Signature</h4>
                                     {intake?.client_signed_at ? (
                                         <div className="signature-status signed">
-                                            ✓ Client signed on {new Date(intake.client_signed_at).toLocaleDateString()}
+                                            <CheckCircle size={16} weight="fill" /> Client signed on {new Date(intake.client_signed_at).toLocaleDateString()}
+                                        </div>
+                                    ) : intake && !isSigningClient ? (
+                                        <button
+                                            type="button"
+                                            className="btn-secondary btn-sm"
+                                            onClick={() => setIsSigningClient(true)}
+                                            disabled={isSigning}
+                                        >
+                                            <PenNib size={16} /> Collect Client Signature
+                                        </button>
+                                    ) : intake && isSigningClient ? (
+                                        <div style={{ marginTop: '0.5rem' }}>
+                                            <SignaturePad
+                                                onSave={async (sig) => {
+                                                    setIsSigning(true)
+                                                    try {
+                                                        const updated = await intakesApi.clientSign(intake.id, sig)
+                                                        setIntake(updated)
+                                                        setIsSigningClient(false)
+                                                        toast.success('Client signature collected')
+                                                    } catch (err: unknown) {
+                                                        toast.error(getApiErrorMessage(err, 'Failed to collect signature'))
+                                                    } finally {
+                                                        setIsSigning(false)
+                                                    }
+                                                }}
+                                                onCancel={() => setIsSigningClient(false)}
+                                            />
                                         </div>
                                     ) : (
-                                        <p className="intake-helper-text">Client signature can be collected after saving.</p>
+                                        <p className="intake-helper-text">Save the intake first to collect client signature.</p>
                                     )}
 
                                     {intake?.co_signed_at && (
                                         <>
-                                            <h4 style={{ marginTop: '1rem' }}>Co-Signature</h4>
+                                            <h4 style={{ marginTop: '1.5rem' }}>Co-Signature</h4>
                                             <div className="signature-status signed">
-                                                ✓ Co-signed by {intake.co_signer_name} on {new Date(intake.co_signed_at).toLocaleDateString()}
+                                                <CheckCircle size={16} weight="fill" /> Co-signed by {intake.co_signer_name} on {new Date(intake.co_signed_at).toLocaleDateString()}
                                             </div>
                                         </>
                                     )}
@@ -831,6 +941,64 @@ export default function IntakeEditorPage() {
                     )}
                 </div>
             </div>
+
+            {/* ─── Preview Modal ──────────────────────────────────────────── */}
+            {showPreview && intake && (
+                <div className="modal-overlay" onClick={() => setShowPreview(false)}>
+                    <div className="modal-container" style={{ maxWidth: '860px', maxHeight: '90vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
+                        <div className="modal-header">
+                            <h2 className="modal-title">Intake Assessment Preview</h2>
+                            <button className="modal-close" onClick={() => setShowPreview(false)}>×</button>
+                        </div>
+                        <div className="modal-body intake-preview">
+                            <div className="intake-preview-meta">
+                                <span><strong>Client:</strong> {intake.client_name}</span>
+                                <span><strong>Date:</strong> {intake.assessment_date}</span>
+                                <span><strong>Provider:</strong> {intake.provider_name}</span>
+                                <span className={`badge badge-${intake.status === 'signed' || intake.status === 'co_signed' ? 'success' : 'neutral'}`}>{intake.status}</span>
+                            </div>
+
+                            {Object.entries(intakeData).map(([key, value]) => {
+                                if (!value || (Array.isArray(value) && value.length === 0)) return null
+                                const label = key.replace(/^intake_/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+                                return (
+                                    <div key={key} className="intake-preview-field">
+                                        <p className="intake-preview-label">{label}</p>
+                                        {Array.isArray(value) ? (
+                                            <ul className="intake-preview-list">
+                                                {(value as string[]).map((v, i) => <li key={i}>{v}</li>)}
+                                            </ul>
+                                        ) : (
+                                            <p className="intake-preview-value">{String(value)}</p>
+                                        )}
+                                    </div>
+                                )
+                            })}
+
+                            <div className="intake-preview-signatures">
+                                <div className="intake-preview-sig-box">
+                                    <p className="intake-preview-label">Provider Signature</p>
+                                    {intake.signed_at
+                                        ? <p className="intake-preview-value">✓ {intake.provider_name} — {new Date(intake.signed_at).toLocaleDateString()}</p>
+                                        : <p className="intake-preview-value" style={{ color: '#94a3b8' }}>Not yet signed</p>
+                                    }
+                                </div>
+                                <div className="intake-preview-sig-box">
+                                    <p className="intake-preview-label">Client Signature</p>
+                                    {intake.client_signed_at
+                                        ? <p className="intake-preview-value">✓ {new Date(intake.client_signed_at).toLocaleDateString()}</p>
+                                        : <p className="intake-preview-value" style={{ color: '#94a3b8' }}>Not yet signed</p>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <div className="modal-footer">
+                            <button className="btn-secondary" onClick={() => window.print()}>Print</button>
+                            <button className="btn-primary" onClick={() => setShowPreview(false)}>Close</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </DashboardLayout>
     )
 }

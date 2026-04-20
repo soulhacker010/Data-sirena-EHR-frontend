@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Intake Assessment — Marcus Johnson (SAMPLE)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 10pt;
+    line-height: 1.5;
+    color: #0F172A;
+    background: #F8FAFC;
+  }
+
+  /* Screen-only print bar */
+  .print-bar {
+    max-width: 780px;
+    margin: 20px auto 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .print-btn {
+    background: linear-gradient(135deg, #0D9488, #06B6D4);
+    color: #fff;
+    border: none;
+    padding: 9px 22px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.2px;
+    box-shadow: 0 2px 8px rgba(13,148,136,0.25);
+  }
+  .print-btn:hover { opacity: 0.9; }
+  .print-note { font-size: 12px; color: #94A3B8; }
+  .sample-badge {
+    margin-left: auto;
+    background: #FEF3C7;
+    color: #B45309;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 4px;
+    border: 1px solid #FDE68A;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+
+  .page {
+    max-width: 780px;
+    margin: 0 auto 40px;
+    padding: 0.5in 0.75in 0.75in;
+    background: #fff;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.09);
+    border-radius: 4px;
+  }
+
+  /* ── Header ──────────────────────────────────────────── */
+  .doc-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 14px;
+    margin-bottom: 18px;
+    border-bottom: 3px solid #0D9488;
+  }
+  .doc-header-left { display: flex; align-items: center; gap: 12px; }
+  .doc-logo { height: 48px; width: auto; object-fit: contain; }
+  .doc-org { font-size: 12pt; font-weight: 700; color: #0F172A; letter-spacing: -0.3px; }
+  .doc-subtitle {
+    font-size: 8.5pt;
+    color: #0D9488;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    margin-top: 1px;
+  }
+  .doc-header-right { text-align: right; font-size: 8.5pt; color: #475569; line-height: 1.8; }
+  .doc-header-right strong { color: #0F172A; font-size: 10pt; }
+
+  /* ── Sections ────────────────────────────────────────── */
+  .section { margin-bottom: 12px; page-break-inside: avoid; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    background: linear-gradient(135deg, #0D9488, #06B6D4);
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 3px 3px 0 0;
+  }
+  .section-num {
+    font-size: 7.5pt;
+    font-weight: 700;
+    background: rgba(255,255,255,0.2);
+    border-radius: 3px;
+    padding: 1px 6px;
+    margin-right: 8px;
+    min-width: 22px;
+    text-align: center;
+  }
+  .section-title { font-size: 9.5pt; font-weight: 600; letter-spacing: 0.2px; }
+  .section-body {
+    border: 1px solid #E2E8F0;
+    border-top: none;
+    border-radius: 0 0 3px 3px;
+    padding: 10px 12px;
+    background: #fff;
+  }
+
+  /* ── Field Rows ──────────────────────────────────────── */
+  .field-row {
+    display: grid;
+    grid-template-columns: 175px 1fr;
+    gap: 6px;
+    padding: 4px 0;
+    border-bottom: 1px solid #F1F5F9;
+  }
+  .field-row:last-child { border-bottom: none; }
+  .field-label { font-size: 8.5pt; font-weight: 600; color: #475569; padding-top: 1px; }
+  .field-value { font-size: 9.5pt; color: #0F172A; }
+
+  /* ── Client Info Grid ────────────────────────────────── */
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; }
+  .info-cell {
+    padding: 7px 10px;
+    border-right: 1px solid #E2E8F0;
+    border-bottom: 1px solid #E2E8F0;
+  }
+  .info-cell:nth-child(3n) { border-right: none; }
+  .info-cell.full-span { grid-column: 1 / -1; border-right: none; }
+  .info-cell:last-child { border-bottom: none; }
+  .info-label {
+    display: block;
+    font-size: 7pt;
+    font-weight: 700;
+    color: #94A3B8;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    margin-bottom: 2px;
+  }
+  .info-val { display: block; font-size: 10pt; color: #0F172A; font-weight: 500; }
+
+  /* ── MSE Grid ────────────────────────────────────────── */
+  .mse-grid { display: grid; grid-template-columns: 1fr 1fr; }
+  .mse-item {
+    display: flex;
+    gap: 6px;
+    padding: 4px 6px;
+    border-bottom: 1px solid #F1F5F9;
+    border-right: 1px solid #F1F5F9;
+  }
+  .mse-item:nth-child(2n) { border-right: none; }
+  .mse-label { font-size: 8pt; font-weight: 600; color: #475569; min-width: 108px; }
+  .mse-val { font-size: 9pt; color: #0F172A; }
+
+  /* ── Risk ────────────────────────────────────────────── */
+  .risk-low { color: #0F766E; font-weight: 700; }
+  .risk-moderate { color: #B45309; font-weight: 700; }
+  .risk-high, .risk-imminent { color: #B91C1C; font-weight: 700; }
+
+  /* ── Signatures ──────────────────────────────────────── */
+  .signature-block {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    margin-top: 24px;
+    padding-top: 14px;
+    border-top: 1px solid #E2E8F0;
+  }
+  .sig-line { height: 44px; border-bottom: 1.5px solid #0D9488; margin-bottom: 6px; }
+  .sig-meta { font-size: 8.5pt; color: #374151; line-height: 1.7; }
+  .sig-date { color: #94A3B8; font-size: 7.5pt; }
+  .sig-unsigned { color: #F59E0B; }
+
+  /* ── Footer ──────────────────────────────────────────── */
+  .doc-footer {
+    margin-top: 18px;
+    padding-top: 8px;
+    border-top: 1px solid #E2E8F0;
+    display: flex;
+    justify-content: space-between;
+    font-size: 7.5pt;
+    color: #94A3B8;
+  }
+  .doc-footer span:first-child { color: #0D9488; font-weight: 600; }
+
+  @media print {
+    body { background: #fff; font-size: 9.5pt; }
+    .print-bar { display: none; }
+    .page { padding: 0; max-width: 100%; margin: 0; box-shadow: none; border-radius: 0; }
+    .section { page-break-inside: avoid; }
+    @page { size: letter; margin: 0.75in 0.75in 0.85in; }
+  }
+</style>
+</head>
+<body>
+
+<div class="print-bar">
+  <button class="print-btn" onclick="window.print()">⬇ Save as PDF / Print</button>
+  <span class="print-note">Print dialog → Save as PDF → destination</span>
+  <span class="sample-badge">Sample Data</span>
+</div>
+
+<div class="page">
+
+  <div class="doc-header">
+    <div class="doc-header-left">
+      <img src="public/images/EHRlogo.png" alt="Sirena Health EHR" class="doc-logo" />
+      <div>
+        <div class="doc-org">Corbehavioral Health Services</div>
+        <div class="doc-subtitle">Intake Assessment</div>
+      </div>
+    </div>
+    <div class="doc-header-right">
+      <strong>Marcus D. Johnson</strong><br>
+      DOB: March 15, 1992 &nbsp;·&nbsp; MRN: MJ000007<br>
+      Date: April 20, 2026
+    </div>
+  </div>
+
+  <!-- 1 -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">1</span><span class="section-title">Client &amp; Provider Information</span></div>
+    <div class="section-body">
+      <div class="info-grid">
+        <div class="info-cell"><span class="info-label">Client Name</span><span class="info-val">Marcus D. Johnson</span></div>
+        <div class="info-cell"><span class="info-label">Date of Birth</span><span class="info-val">March 15, 1992</span></div>
+        <div class="info-cell"><span class="info-label">MRN / Chart #</span><span class="info-val">MJ000007</span></div>
+        <div class="info-cell"><span class="info-label">Assessment Date</span><span class="info-val">April 20, 2026</span></div>
+        <div class="info-cell"><span class="info-label">Provider</span><span class="info-val">Dr. Joseph Carter, LCSW</span></div>
+        <div class="info-cell"><span class="info-label">NPI</span><span class="info-val">1234567890</span></div>
+        <div class="info-cell full-span"><span class="info-label">Referral Source</span><span class="info-val">Primary Care Physician — Dr. Angela Torres</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2 -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">2</span><span class="section-title">Presenting Problem / Chief Complaint</span></div>
+    <div class="section-body">
+      <div class="field-row"><span class="field-label">Chief Complaint</span><span class="field-value">Client presents with persistent low mood, difficulty concentrating, and social withdrawal lasting approximately 6 months following job loss and relationship ending. Reports sleeping 10–12 hours per day, loss of interest in previously enjoyed activities, and frequent hopeless thoughts. Denies active suicidal ideation at this time.</span></div>
+    </div>
+  </div>
+
+  <!-- 3 -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">3</span><span class="section-title">Diagnosis</span></div>
+    <div class="section-body">
+      <div class="field-row"><span class="field-label">Primary Diagnosis</span><span class="field-value">F33.1 — Major depressive disorder, recurrent, moderate</span></div>
+      <div class="field-row"><span class="field-label">Secondary Diagnoses</span><span class="field-value">F41.1 — Generalized anxiety disorder<br>Z56.9 — Other problems related to employment</span></div>
+    </div>
+  </div>
+
+  <!-- 4 -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">4</span><span class="section-title">Pertinent History</span></div>
+    <div class="section-body">
+      <div class="field-row"><span class="field-label">Psychiatric History</span><span class="field-value">One prior episode of depression at age 24, treated with CBT for approximately 8 months with good response. No prior hospitalizations. No history of psychosis or mania. Previously trialed sertraline 50mg — discontinued due to side effects.</span></div>
+      <div class="field-row"><span class="field-label">Medical History</span><span class="field-value">Hypertension (controlled, lisinopril 10mg daily). No known drug allergies.</span></div>
+      <div class="field-row"><span class="field-label">Developmental History</span><span class="field-value">No significant developmental delays. Met all early milestones. Completed high school and two years of college.</span></div>
+      <div class="field-row"><span class="field-label">Trauma History</span><span class="field-value">Witnessed domestic violence in childhood home (ages 8–12). Denies personal abuse. Acknowledges potential impact on relationship patterns.</span></div>
+      <div class="field-row"><span class="field-label">Substance Use History</span><span class="field-value">Occasional alcohol (1–2 drinks/week). No current illicit substance use. History of marijuana use in college, discontinued 4 years ago.</span></div>
+    </div>
+  </div>
+
+  <!-- 5 -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">5</span><span class="section-title">Mental Status Exam</span></div>
+    <div class="section-body">
+      <div class="mse-grid">
+        <div class="mse-item"><span class="mse-label">Appearance</span><span class="mse-val">Casually dressed</span></div>
+        <div class="mse-item"><span class="mse-label">Orientation</span><span class="mse-val">Oriented x4</span></div>
+        <div class="mse-item"><span class="mse-label">Behavior</span><span class="mse-val">Cooperative</span></div>
+        <div class="mse-item"><span class="mse-label">Speech</span><span class="mse-val">Normal rate and rhythm</span></div>
+        <div class="mse-item"><span class="mse-label">Affect</span><span class="mse-val">Constricted</span></div>
+        <div class="mse-item"><span class="mse-label">Mood</span><span class="mse-val">Depressed</span></div>
+        <div class="mse-item"><span class="mse-label">Thought Process</span><span class="mse-val">Logical and goal-directed</span></div>
+        <div class="mse-item"><span class="mse-label">Thought Content</span><span class="mse-val">No suicidal or homicidal ideation</span></div>
+        <div class="mse-item"><span class="mse-label">Perception</span><span class="mse-val">No hallucinations</span></div>
+        <div class="mse-item"><span class="mse-label">Judgement</span><span class="mse-val">Fair</span></div>
+        <div class="mse-item"><span class="mse-label">Insight</span><span class="mse-val">Good</span></div>
+        <div class="mse-item"><span class="mse-label">Appetite</span><span class="mse-val">Decreased</span></div>
+        <div class="mse-item"><span class="mse-label">Sleep</span><span class="mse-val">Hypersomnia</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 6 -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">6</span><span class="section-title">Family / Psychosocial Assessment</span></div>
+    <div class="section-body">
+      <div class="field-row"><span class="field-label">Family Composition</span><span class="field-value">Lives alone. Parents divorced; limited contact with father. Mother supportive and nearby. One older sister, good relationship.</span></div>
+      <div class="field-row"><span class="field-label">Family Relationships</span><span class="field-value">Close relationship with mother and sister. Recently ended a 3-year relationship — significant current stressor.</span></div>
+      <div class="field-row"><span class="field-label">Social Functioning</span><span class="field-value">Increasing isolation over 4 months. Has close friends but declining invitations. States he feels like "a burden" to others.</span></div>
+      <div class="field-row"><span class="field-label">Education / Employment</span><span class="field-value">Currently unemployed following layoff 6 months ago. Previously in logistics management. Actively job searching.</span></div>
+      <div class="field-row"><span class="field-label">Cultural Considerations</span><span class="field-value">African American male. Reports cultural stigma around mental health treatment. Spiritually oriented; finds church community supportive.</span></div>
+    </div>
+  </div>
+
+  <!-- 7 -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">7</span><span class="section-title">Risk Factors</span></div>
+    <div class="section-body">
+      <div class="field-row"><span class="field-label">Overall Risk Level</span><span class="field-value risk-low">Low</span></div>
+      <div class="field-row"><span class="field-label">Risk Factors Present</span><span class="field-value">Recent loss or stressor · Social isolation</span></div>
+      <div class="field-row"><span class="field-label">Risk Explanation</span><span class="field-value">Denies active SI/HI. No access to lethal means. Protective factors include family support and engagement in treatment. Risk assessed as low. Will monitor each session.</span></div>
+    </div>
+  </div>
+
+  <!-- 8 -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">8</span><span class="section-title">Safety Plan</span></div>
+    <div class="section-body">
+      <div class="field-row"><span class="field-label">Safety Plan Status</span><span class="field-value">Yes — Safety plan in place</span></div>
+      <div class="field-row"><span class="field-label">Safety Plan Details</span><span class="field-value">Crisis contacts reviewed: 988 Lifeline, mother (primary), sister (secondary). Client agreed to call provider if SI emerges. Follow-up in one week.</span></div>
+    </div>
+  </div>
+
+  <!-- 9 -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">9</span><span class="section-title">Strengths, Supports &amp; Treatment Goals</span></div>
+    <div class="section-body">
+      <div class="field-row"><span class="field-label">Client Strengths</span><span class="field-value">High insight. Previous positive response to therapy. Motivated. Strong verbal communication. Spiritual resilience.</span></div>
+      <div class="field-row"><span class="field-label">Support Systems</span><span class="field-value">Mother, sister, church community, two close friends, PCP engaged and supportive.</span></div>
+      <div class="field-row"><span class="field-label">Tentative Goals</span><span class="field-value">1. Reduce depressive symptoms (PHQ-9 from 16 to &lt;8 within 12 weeks)<br>2. Increase social engagement to 2+ activities/week<br>3. Develop and practice 5 coping strategies for low mood</span></div>
+    </div>
+  </div>
+
+  <!-- 10 -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">10</span><span class="section-title">Treatment Length &amp; Frequency</span></div>
+    <div class="section-body">
+      <div class="field-row"><span class="field-label">Session Frequency</span><span class="field-value">Weekly</span></div>
+      <div class="field-row"><span class="field-label">Session Duration</span><span class="field-value">45 minutes</span></div>
+      <div class="field-row"><span class="field-label">Estimated Duration</span><span class="field-value">6 months with reassessment at 3 months</span></div>
+    </div>
+  </div>
+
+  <!-- 11 -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">11</span><span class="section-title">Special Needs / Accommodations</span></div>
+    <div class="section-body">
+      <div class="field-row"><span class="field-label">Special Needs</span><span class="field-value">No physical accommodations required. Prefers afternoon appointments (after 2:00 PM). Telehealth acceptable as backup.</span></div>
+    </div>
+  </div>
+
+  <!-- 12 -->
+  <div class="section">
+    <div class="section-header"><span class="section-num">12</span><span class="section-title">Medical Necessity &amp; Signatures</span></div>
+    <div class="section-body">
+      <div class="field-row"><span class="field-label">Medical Necessity</span><span class="field-value">I certify that the services provided are medically necessary and consistent with the patient's diagnosis and treatment plan. Services are required to address the presenting clinical condition and prevent deterioration of the patient's mental health functioning. The client presents with significant functional impairment in occupational, social, and daily living domains attributable to Major Depressive Disorder, Recurrent, Moderate severity.</span></div>
+      <div class="signature-block">
+        <div>
+          <div class="sig-line"></div>
+          <div class="sig-meta"><strong>Provider Signature</strong><br>Dr. Joseph Carter, LCSW<br><span class="sig-date">Signed April 20, 2026</span></div>
+        </div>
+        <div>
+          <div class="sig-line"></div>
+          <div class="sig-meta"><strong>Client / Guardian Signature</strong><br>Marcus D. Johnson<br><span class="sig-unsigned sig-date">Not yet signed</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="doc-footer">
+    <span>Corbehavioral Health Services — Confidential Clinical Record</span>
+    <span>Generated April 20, 2026</span>
+  </div>
+
+</div>
+</body>
+</html>

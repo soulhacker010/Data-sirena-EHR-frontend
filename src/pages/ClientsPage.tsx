@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { ActionMenu, AddClientModal, EditClientModal, ConfirmDialog, ImportClientsModal, EmptyState, TableSkeleton } from '../components/ui'
 import { clientsApi, getApiErrorMessage } from '../api'
+import { calculateAge, formatDateSafe } from '../utils/dates'
 import type { Client } from '../types'
 import {
     MagnifyingGlass,
@@ -20,27 +21,8 @@ import {
     UploadSimple
 } from '@phosphor-icons/react'
 
-// Calculate age from DOB
-const calculateAge = (dob: string) => {
-    const today = new Date()
-    const birth = new Date(dob)
-    let age = today.getFullYear() - birth.getFullYear()
-    const m = today.getMonth() - birth.getMonth()
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-        age--
-    }
-    return age
-}
-
-// Format date
-const formatDate = (date: string | null | undefined) => {
-    if (!date) return '—'
-    return new Date(date).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
-    })
-}
+// Format date — delegate to timezone-safe utility
+const formatDate = (date: string | null | undefined) => formatDateSafe(date)
 
 // Sort types
 type SortField = 'name' | 'dob' | 'insurance' | 'lastVisit' | 'status'
@@ -89,7 +71,7 @@ export default function ClientsPage() {
             const response = await clientsApi.getAll(params)
             setClients(response.results)
             setTotalCount(response.count)
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to load clients'))
         } finally {
             setIsLoading(false)
@@ -184,7 +166,7 @@ export default function ClientsPage() {
             setClients(prev => prev.filter(c => c.id !== selectedClient.id))
             setTotalCount(prev => prev - 1)
             toast.success('Client deleted successfully')
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to delete client'))
         } finally {
             setIsDeleting(false)
@@ -215,7 +197,7 @@ export default function ClientsPage() {
             toast.success(`${formData.firstName} ${formData.lastName} added successfully`)
             setIsAddModalOpen(false)
             fetchClients() // Refresh list
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to add client'))
         } finally {
             setIsSaving(false)
@@ -245,7 +227,7 @@ export default function ClientsPage() {
             setIsEditModalOpen(false)
             setSelectedClient(null)
             fetchClients() // Refresh list
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to update client'))
         } finally {
             setIsSaving(false)

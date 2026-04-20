@@ -1,10 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import toast from 'react-hot-toast'
+import { getApiErrorMessage } from '../utils/errors'
+import { calculateAge, formatDateSafe } from '../utils/dates'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { Modal, EditClientModal, EmptyState, PageSkeleton, ConfirmDialog } from '../components/ui'
-import StripePaymentForm from '../components/billing/StripePaymentForm'
-import { clientsApi, billingApi, notesApi, appointmentsApi } from '../api'
+import { clientsApi, billingApi, notesApi, appointmentsApi, intakesApi } from '../api'
+import type { IntakeListItem } from '../api/intakes'
+
 import { useAuth } from '../context'
 import { BILLING_ROLES } from '../utils/permissions'
 import type { ClientDetail, Authorization, ClientDocument, Invoice, Payment, Claim, SessionNote, Appointment } from '../types'
@@ -31,36 +34,16 @@ import {
     FileDoc,
     Image,
     Receipt,
-    CreditCard,
     CheckCircle,
     ClipboardText,
     Eraser
 } from '@phosphor-icons/react'
 
 // Tab type
-type TabType = 'profile' | 'insurance' | 'authorizations' | 'appointments' | 'notes' | 'documents' | 'billing'
+type TabType = 'profile' | 'insurance' | 'authorizations' | 'appointments' | 'notes' | 'intakes' | 'documents' | 'billing'
 
-// Calculate age
-const calculateAge = (dob: string) => {
-    const today = new Date()
-    const birth = new Date(dob)
-    let age = today.getFullYear() - birth.getFullYear()
-    const m = today.getMonth() - birth.getMonth()
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
-        age--
-    }
-    return age
-}
-
-// Format date
-const formatDate = (date: string | undefined) => {
-    if (!date) return '—'
-    return new Date(date).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
-    })
-}
+// Format date — delegate to timezone-safe utility
+const formatDate = (date: string | undefined) => formatDateSafe(date)
 
 // Format currency
 const formatCurrency = (amount: number | string | null | undefined) => {
@@ -101,6 +84,7 @@ export default function ClientDetailPage() {
     const [claims, setClaims] = useState<Claim[]>([])
     const [clientNotes, setClientNotes] = useState<SessionNote[]>([])
     const [appointments, setAppointments] = useState<Appointment[]>([])
+    const [intakes, setIntakes] = useState<IntakeListItem[]>([])
 
     const [activeTab, setActiveTab] = useState<TabType>('profile')
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
@@ -117,8 +101,6 @@ export default function ClientDetailPage() {
     const [paymentAmount, setPaymentAmount] = useState('')
     const [paymentMethod, setPaymentMethod] = useState('credit_card')
     const [paymentReference, setPaymentReference] = useState('')
-    const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null)
-    const [isStripeLoading, setIsStripeLoading] = useState(false)
 
     // Post payment form state
     const [postInsurancePaid, setPostInsurancePaid] = useState('')
@@ -142,15 +124,17 @@ export default function ClientDetailPage() {
         const load = async () => {
             setIsLoading(true)
             try {
-                const [clientData, notesRes, appointmentsRes] = await Promise.all([
+                const [clientData, notesRes, appointmentsRes, intakesRes] = await Promise.all([
                     clientsApi.getById(id),
                     notesApi.getAll({ client_id: id, page_size: 100 }),
                     appointmentsApi.getAll({ client_id: id, start_date: '2020-01-01', end_date: '2030-12-31' }),
+                    intakesApi.getAll({ client: id, page: 1 }),
                 ])
                 setClient(clientData)
                 setAuthorizations(clientData.authorizations || [])
                 setClientNotes(notesRes.results)
                 setAppointments(appointmentsRes)
+                setIntakes(intakesRes.results)
 
                 if (canAccessBilling) {
                     const [invoicesRes, paymentsRes, claimsData] = await Promise.all([
@@ -162,8 +146,8 @@ export default function ClientDetailPage() {
                     setPayments(paymentsRes.results)
                     setClaims(claimsData)
                 }
-            } catch (err: any) {
-                toast.error(err?.response?.data?.detail || 'Failed to load client')
+            } catch (err: unknown) {
+                toast.error(getApiErrorMessage(err, 'Failed to load client'))
                 navigate('/clients')
             } finally {
                 setIsLoading(false)
@@ -219,7 +203,6 @@ export default function ClientDetailPage() {
         setPaymentAmount('')
         setPaymentMethod('credit_card')
         setPaymentReference('')
-        setStripeClientSecret(null)
     }
 
     const handleRecordPayment = async () => {
@@ -254,44 +237,11 @@ export default function ClientDetailPage() {
             setIsPaymentModalOpen(false)
             resetPaymentForm()
             refreshBilling()
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to record payment')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to record payment'))
         } finally {
             setIsSaving(false)
         }
-    }
-
-    const handleStripePayment = async () => {
-        const unpaid = invoices.find(inv => inv.status !== 'paid' && Number(inv.balance || 0) > 0)
-        if (!unpaid || !paymentAmount) return
-        const amount = parseFloat(paymentAmount)
-        if (isNaN(amount) || amount <= 0) {
-            toast.error('Please enter a valid amount')
-            return
-        }
-        if (amount > Number(unpaid.balance || 0)) {
-            toast.error(`Payment exceeds balance due of ${formatCurrency(unpaid.balance)}`)
-            return
-        }
-        setIsStripeLoading(true)
-        try {
-            const { client_secret } = await billingApi.createStripePayment({
-                invoice_id: unpaid.id,
-                amount,
-            })
-            setStripeClientSecret(client_secret)
-        } catch (err: any) {
-            toast.error(err?.response?.data?.message || 'Failed to initialize payment')
-        } finally {
-            setIsStripeLoading(false)
-        }
-    }
-
-    const handleStripeSuccess = async () => {
-        toast.success('Payment successful!')
-        setIsPaymentModalOpen(false)
-        resetPaymentForm()
-        await refreshBilling()
     }
 
     // Handle post payment to claim
@@ -314,8 +264,8 @@ export default function ClientDetailPage() {
             setPostReference('')
             setPostNotes('')
             refreshBilling()
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to post payment')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to post payment'))
         }
     }
 
@@ -335,8 +285,8 @@ export default function ClientDetailPage() {
             setWriteOffReason('')
             setWriteOffNotes('')
             refreshBilling()
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to apply write-off')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to apply write-off'))
         }
     }
 
@@ -350,8 +300,8 @@ export default function ClientDetailPage() {
             toast.success('Document uploaded')
             setIsUploadModalOpen(false)
             refreshClient()
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Upload failed')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Upload failed'))
         } finally {
             setIsSaving(false)
         }
@@ -368,8 +318,8 @@ export default function ClientDetailPage() {
             setDeleteDocId(null)
             setDeleteDocName(null)
             refreshClient()
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to delete document')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to delete document'))
         } finally {
             setIsSaving(false)
         }
@@ -381,8 +331,8 @@ export default function ClientDetailPage() {
         try {
             const { url } = await clientsApi.getDocumentAccessUrl(id, doc.id)
             openExternalDocument(url)
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || err?.response?.data?.file || 'Document preview is unavailable')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Document preview is unavailable'))
         }
     }
 
@@ -392,8 +342,8 @@ export default function ClientDetailPage() {
         try {
             const { url } = await clientsApi.getDocumentAccessUrl(id, doc.id, true)
             openExternalDocument(url)
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || err?.response?.data?.file || 'Document download is unavailable')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Document download is unavailable'))
         }
     }
 
@@ -431,6 +381,7 @@ export default function ClientDetailPage() {
                             <h1 className="detail-title">{client.first_name} {client.last_name}</h1>
                             <p className="detail-meta">
                                 {client.gender || 'N/A'} · Age {calculateAge(client.date_of_birth)} · DOB {formatDate(client.date_of_birth)}
+                                {client.mrn && <> · <span className="mrn-badge">MRN: {client.mrn}</span></>}
                             </p>
                         </div>
                     </div>
@@ -463,6 +414,9 @@ export default function ClientDetailPage() {
                 </button>
                 <button className={`client-tab ${activeTab === 'notes' ? 'active' : ''}`} onClick={() => setActiveTab('notes')}>
                     <FileText size={18} weight="duotone" /> Notes
+                </button>
+                <button className={`client-tab ${activeTab === 'intakes' ? 'active' : ''}`} onClick={() => setActiveTab('intakes')}>
+                    <ClipboardText size={18} weight="duotone" /> Intakes
                 </button>
                 <button className={`client-tab ${activeTab === 'documents' ? 'active' : ''}`} onClick={() => setActiveTab('documents')}>
                     <File size={18} weight="duotone" /> Documents
@@ -862,6 +816,57 @@ export default function ClientDetailPage() {
                     </div>
                 )}
 
+                {/* Intakes Tab */}
+                {activeTab === 'intakes' && (
+                    <div className="card">
+                        <div className="card-header">
+                            <h2 className="card-title">Intake Assessments</h2>
+                            <button
+                                className="btn-primary btn-sm"
+                                onClick={() => navigate(`/intakes/new?client=${id}`)}
+                            >
+                                <Plus size={16} weight="bold" /> New Intake
+                            </button>
+                        </div>
+                        <div className="card-body p-0">
+                            {intakes.length > 0 ? (
+                                <table className="data-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Provider</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {intakes.map(intake => (
+                                            <tr
+                                                key={intake.id}
+                                                className="clickable-row"
+                                                onClick={() => navigate(`/intakes/${intake.id}`)}
+                                            >
+                                                <td>{formatDate(intake.assessment_date)}</td>
+                                                <td>{intake.provider_name || '—'}</td>
+                                                <td>
+                                                    <span className={`badge badge-${intake.status === 'signed' || intake.status === 'co_signed' ? 'success' : intake.status === 'draft' ? 'neutral' : 'warning'}`}>
+                                                        {intake.status.charAt(0).toUpperCase() + intake.status.slice(1).replace('_', ' ')}
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            ) : (
+                                <EmptyState
+                                    variant="no-data"
+                                    title="No intake assessments yet"
+                                    description="Intake assessments for this client will appear here."
+                                />
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* Documents Tab */}
                 {activeTab === 'documents' && (
                     <div className="card">
@@ -1238,23 +1243,10 @@ export default function ClientDetailPage() {
                 title="Record Payment"
                 size="sm"
             >
-                {stripeClientSecret && selectedOutstandingInvoice ? (
-                    <StripePaymentForm
-                        clientSecret={stripeClientSecret}
-                        amount={parseFloat(paymentAmount)}
-                        invoiceNumber={selectedOutstandingInvoice.invoice_number}
-                        onSuccess={handleStripeSuccess}
-                        onCancel={() => setStripeClientSecret(null)}
-                    />
-                ) : (
                     <form
                         className="payment-form"
                         onSubmit={(e) => {
                             e.preventDefault()
-                            if (paymentMethod === 'credit_card') {
-                                handleStripePayment()
-                                return
-                            }
                             handleRecordPayment()
                         }}
                     >
@@ -1286,7 +1278,7 @@ export default function ClientDetailPage() {
                                 onChange={(e) => setPaymentMethod(e.target.value)}
                                 className="form-input-basic"
                             >
-                                <option value="credit_card">Credit Card (Stripe)</option>
+                                <option value="credit_card">Credit Card</option>
                                 <option value="eft">EFT Transfer</option>
                                 <option value="check">Check</option>
                                 <option value="cash">Cash</option>
@@ -1294,18 +1286,16 @@ export default function ClientDetailPage() {
                             </select>
                         </div>
 
-                        {paymentMethod !== 'credit_card' && (
-                            <div className="form-group">
-                                <label className="form-label">Reference #</label>
-                                <input
-                                    type="text"
-                                    value={paymentReference}
-                                    onChange={(e) => setPaymentReference(e.target.value)}
-                                    className="form-input-basic"
-                                    placeholder="Check #, Transaction ID, etc."
-                                />
-                            </div>
-                        )}
+                        <div className="form-group">
+                            <label className="form-label">Reference #</label>
+                            <input
+                                type="text"
+                                value={paymentReference}
+                                onChange={(e) => setPaymentReference(e.target.value)}
+                                className="form-input-basic"
+                                placeholder="Check #, Transaction ID, etc."
+                            />
+                        </div>
 
                         <div className="payment-form-actions">
                             <button
@@ -1321,21 +1311,12 @@ export default function ClientDetailPage() {
                             <button
                                 type="submit"
                                 className="btn-primary"
-                                disabled={!selectedOutstandingInvoice || isStripeLoading || isSaving}
+                                disabled={!selectedOutstandingInvoice || isSaving}
                             >
-                                {paymentMethod === 'credit_card' ? (
-                                    isStripeLoading ? (
-                                        <><span className="spinner-sm" /> Loading...</>
-                                    ) : (
-                                        <><CreditCard size={16} weight="bold" /> Pay with Card</>
-                                    )
-                                ) : (
-                                    <><CheckCircle size={16} weight="bold" /> Record Payment</>
-                                )}
+                                <CheckCircle size={16} weight="bold" /> Record Payment
                             </button>
                         </div>
                     </form>
-                )}
             </Modal>
 
             {/* Post Payment to Claim Modal */}

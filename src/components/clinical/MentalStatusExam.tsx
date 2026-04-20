@@ -9,6 +9,18 @@ interface MentalStatusExamProps {
     onToggleCollapse?: () => void
 }
 
+const OTHER_PREFIX = 'Other: '
+
+function getSelectValue(raw: string): string {
+    if (raw.startsWith(OTHER_PREFIX)) return 'Other (specify)'
+    return raw
+}
+
+function getOtherText(raw: string): string {
+    if (raw.startsWith(OTHER_PREFIX)) return raw.slice(OTHER_PREFIX.length)
+    return ''
+}
+
 export default function MentalStatusExam({
     values,
     onChange,
@@ -40,22 +52,45 @@ export default function MentalStatusExam({
 
             {!collapsed && (
                 <div className="mse-grid">
-                    {MSE_FIELDS.map(field => (
-                        <div key={field.key} className="mse-field">
-                            <label className="form-label">{field.label}</label>
-                            <select
-                                className="form-input-basic"
-                                value={values[field.key] || ''}
-                                onChange={e => onChange(field.key, e.target.value)}
-                                disabled={disabled}
-                            >
-                                <option value="">Select...</option>
-                                {field.options.map(opt => (
-                                    <option key={opt} value={opt}>{opt}</option>
-                                ))}
-                            </select>
-                        </div>
-                    ))}
+                    {MSE_FIELDS.map(field => {
+                        const raw = values[field.key] || ''
+                        const selectVal = getSelectValue(raw)
+                        const isOther = selectVal === 'Other (specify)'
+
+                        return (
+                            <div key={field.key} className="mse-field">
+                                <label className="form-label">{field.label}</label>
+                                <select
+                                    className="form-input-basic"
+                                    value={selectVal}
+                                    onChange={e => {
+                                        if (e.target.value === 'Other (specify)') {
+                                            onChange(field.key, OTHER_PREFIX)
+                                        } else {
+                                            onChange(field.key, e.target.value)
+                                        }
+                                    }}
+                                    disabled={disabled}
+                                >
+                                    <option value="">Select...</option>
+                                    {field.options.map(opt => (
+                                        <option key={opt} value={opt}>{opt}</option>
+                                    ))}
+                                </select>
+                                {isOther && (
+                                    <input
+                                        type="text"
+                                        className="form-input-basic"
+                                        style={{ marginTop: '0.375rem' }}
+                                        placeholder="Describe..."
+                                        value={getOtherText(raw)}
+                                        onChange={e => onChange(field.key, OTHER_PREFIX + e.target.value)}
+                                        disabled={disabled}
+                                    />
+                                )}
+                            </div>
+                        )
+                    })}
                 </div>
             )}
         </div>

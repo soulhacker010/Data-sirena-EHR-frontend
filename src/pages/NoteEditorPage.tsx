@@ -5,10 +5,13 @@ import { DashboardLayout } from '../components/layout'
 import { PageSkeleton } from '../components/ui'
 import Modal from '../components/ui/Modal'
 import SignaturePad from '../components/ui/SignaturePad'
-import { notesApi, clientsApi, usersApi, getApiErrorMessage } from '../api'
+import { notesApi, clientsApi, lookupsApi, getApiErrorMessage } from '../api'
 import type { SessionNote, Client, User } from '../types'
 import { MentalStatusExam, RiskAssessment, ABADataFields, InterventionsChecklist } from '../components/clinical'
 import { ABA_CPT_CODES } from '../constants/clinicalFields'
+import { cptCodes } from '../constants/cptCodes'
+import { useAuth } from '../context'
+import { printNote } from '../utils/printNote'
 import {
     ArrowLeft,
     User as UserIcon,
@@ -21,7 +24,8 @@ import {
     Warning,
     FileText,
     CaretDown,
-    UserCirclePlus
+    UserCirclePlus,
+    FilePdf
 } from '@phosphor-icons/react'
 
 export default function NoteEditorPage() {
@@ -29,6 +33,7 @@ export default function NoteEditorPage() {
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
     const clientIdParam = searchParams.get('client')
+    const { user } = useAuth()
 
     const [note, setNote] = useState<SessionNote | null>(null)
     const [clients, setClients] = useState<Client[]>([])
@@ -79,13 +84,15 @@ export default function NoteEditorPage() {
         const load = async () => {
             setIsLoading(true)
             try {
-                // Fetch clients and supervisors in parallel
-                const [clientsRes, usersRes] = await Promise.all([
+                // Fetch clients and providers in parallel
+                // NOTE: use lookupsApi.getProviders() (accessible to all roles) NOT
+                // usersApi.getAll() which requires admin — that was causing 403 for clinicians
+                const [clientsRes, providersRes] = await Promise.all([
                     clientsApi.getAll({ page_size: 500 }),
-                    usersApi.getAll({ role: 'supervisor', page_size: 100 }),
+                    lookupsApi.getProviders(),
                 ])
                 setClients(clientsRes.results)
-                setSupervisors(usersRes.results)
+                setSupervisors(providersRes.filter(p => p.role === 'supervisor') as unknown as User[])
 
                 if (!isNewNote && id) {
                     // Load existing note
@@ -136,7 +143,7 @@ export default function NoteEditorPage() {
                         }
                     }
                 }
-            } catch (err: any) {
+            } catch (err: unknown) {
                 toast.error(getApiErrorMessage(err, 'Failed to load'))
                 navigate('/notes')
             } finally {
@@ -232,7 +239,7 @@ export default function NoteEditorPage() {
             }
             setLastSaved(new Date().toLocaleTimeString())
             isDirtyRef.current = false // Reset dirty flag after manual save
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to save'))
         } finally {
             setIsSaving(false)
@@ -249,7 +256,7 @@ export default function NoteEditorPage() {
             setNote(prev => prev ? { ...prev, status: 'signed' } : prev)
             setShowSignatureModal(false)
             toast.success('Note signed and finalized')
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to sign'))
         } finally {
             setIsSaving(false)
@@ -323,7 +330,7 @@ export default function NoteEditorPage() {
             setShowCoSignModal(false)
             setSelectedSupervisor('')
             toast.success('Co-sign request sent')
-        } catch (err: any) {
+        } catch (err: unknown) {
             toast.error(getApiErrorMessage(err, 'Failed to request co-sign'))
         } finally {
             setIsSaving(false)
@@ -363,6 +370,26 @@ export default function NoteEditorPage() {
                             <CheckCircle size={16} weight="fill" className="text-success" />
                             Saved at {lastSaved}
                         </span>
+                    )}
+
+                    {note && (
+                        <button
+                            className="btn-secondary"
+                            onClick={() => printNote({
+                                id: note.id,
+                                client_name: clientName,
+                                provider_name: providerName,
+                                session_date: note.session_date,
+                                service_code: note.service_code,
+                                status: note.status,
+                                signed_at: note.signed_at,
+                                note_data: note.note_data || {},
+                                organization_name: user?.organization_name,
+                            })}
+                        >
+                            <FilePdf size={18} />
+                            Export PDF
+                        </button>
                     )}
 
                     <button
@@ -467,13 +494,18 @@ export default function NoteEditorPage() {
                         {isNewNote && !note ? (
                             <div className="form-group">
                                 <label className="form-label">Service Code</label>
-                                <input
-                                    type="text"
+                                <select
                                     className="form-input-basic"
-                                    placeholder="e.g. 97153"
                                     value={serviceCode}
                                     onChange={(e) => setServiceCode(e.target.value)}
-                                />
+                                >
+                                    <option value="">Select a code…</option>
+                                    {cptCodes.map(c => (
+                                        <option key={c.code} value={c.code}>
+                                            {c.code} — {c.description}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                         ) : (
                             note?.service_code && (

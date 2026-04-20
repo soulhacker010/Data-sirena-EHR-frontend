@@ -97,10 +97,6 @@ export interface RecordPaymentPayload {
     notes?: string
 }
 
-export interface StripePaymentPayload {
-    invoice_id: string
-    amount: number
-}
 
 export interface SubmitClaimPayload {
     invoice_id: string

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
+import { getApiErrorMessage } from '../utils/errors'
 import { useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { PageSkeleton, EmptyState } from '../components/ui'
@@ -38,8 +39,8 @@ export default function AnalyticsPage() {
                 end_date: dateTo || undefined,
             })
             setData(report)
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to load analytics')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to load analytics'))
         } finally {
             setIsLoading(false)
         }

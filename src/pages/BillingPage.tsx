@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
+import { getApiErrorMessage } from '../utils/errors'
 import { useSearchParams } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { Modal, ActionMenu, EmptyState, PageSkeleton } from '../components/ui'
 import { billingApi, clientsApi } from '../api'
 import type { Invoice, Claim, Payment, Client } from '../types'
-import StripePaymentForm from '../components/billing/StripePaymentForm'
 import { BILLING_SERVICE_CATALOG, getBillingServiceDescription } from '../utils/billingServiceCatalog'
 
 import {
@@ -144,8 +144,6 @@ export default function BillingPage() {
         payerId: ''
     })
     const [isSaving, setIsSaving] = useState(false)
-    const [stripeClientSecret, setStripeClientSecret] = useState<string | null>(null)
-    const [isStripeLoading, setIsStripeLoading] = useState(false)
 
     // Fetch invoices
     const fetchInvoices = useCallback(async () => {
@@ -159,8 +157,8 @@ export default function BillingPage() {
             const response = await billingApi.getInvoices(params)
             setInvoices(response.results)
             setInvoiceCount(response.count)
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to load invoices')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to load invoices'))
         }
     }, [invoiceStatus, invoiceClient, invoiceDateFrom, invoiceDateTo])
 
@@ -174,8 +172,8 @@ export default function BillingPage() {
             })
             const response = await billingApi.getClaims(params)
             setClaims(response.results)
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to load claims')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to load claims'))
         }
     }, [claimStatus, claimDateFrom, claimDateTo])
 
@@ -195,8 +193,8 @@ export default function BillingPage() {
                 setClaims(claimsRes.results)
                 setClientsList(clientsRes.results)
                 setPayments(paymentsRes.results)
-            } catch (err: any) {
-                toast.error('Failed to load billing data')
+            } catch (err: unknown) {
+                toast.error(getApiErrorMessage(err, 'Failed to load billing data'))
             } finally {
                 setIsLoading(false)
             }
@@ -343,47 +341,13 @@ export default function BillingPage() {
             setIsInvoiceModalOpen(false)
             setPaymentFormData({ amount: '', paymentMethod: 'credit_card', reference: '' })
             fetchInvoices()
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to record payment')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to record payment'))
         } finally {
             setIsSaving(false)
         }
     }
 
-    const handleStripePayment = async () => {
-        if (!selectedInvoice || !paymentFormData.amount) return
-        const amount = parseFloat(paymentFormData.amount)
-        if (isNaN(amount) || amount <= 0) {
-            toast.error('Please enter a valid amount')
-            return
-        }
-        setIsStripeLoading(true)
-        try {
-            const { client_secret } = await billingApi.createStripePayment({
-                invoice_id: selectedInvoice.id,
-                amount,
-            })
-            setStripeClientSecret(client_secret)
-        } catch (err: any) {
-            toast.error(err?.response?.data?.message || 'Failed to initialize payment')
-        } finally {
-            setIsStripeLoading(false)
-        }
-    }
-
-    const handleStripeSuccess = async () => {
-        toast.success('Payment successful!')
-        setStripeClientSecret(null)
-        setIsPaymentModalOpen(false)
-        setIsInvoiceModalOpen(false)
-        setPaymentFormData({ amount: '', paymentMethod: 'credit_card', reference: '' })
-        fetchInvoices()
-        // Also refresh payments list so Payments tab + PAID MTD update
-        try {
-            const paymentsRes = await billingApi.getPayments({})
-            setPayments(paymentsRes.results)
-        } catch { /* silent */ }
-    }
 
     const getClientName = (clientId: string) => {
         const client = clientsList.find(entry => entry.id === clientId)
@@ -449,8 +413,8 @@ export default function BillingPage() {
             setIsCreateClaimModalOpen(false)
             resetClaimForm()
             fetchClaims()
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || err?.response?.data?.message || 'Failed to create claim')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to create claim'))
         } finally {
             setIsSaving(false)
         }
@@ -470,8 +434,8 @@ export default function BillingPage() {
             toast.success('Claim resubmitted')
             setIsClaimModalOpen(false)
             fetchClaims()
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to resubmit claim')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to resubmit claim'))
         } finally {
             setIsSaving(false)
         }
@@ -485,8 +449,8 @@ export default function BillingPage() {
             toast.success('Claim marked as submitted')
             setIsClaimModalOpen(false)
             fetchClaims()
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to submit claim')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to submit claim'))
         } finally {
             setIsSaving(false)
         }
@@ -496,8 +460,8 @@ export default function BillingPage() {
         try {
             await billingApi.downloadPDF(invoice.id, invoice.invoice_number)
             toast.success('Invoice PDF downloaded')
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to download PDF')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to download PDF'))
         }
     }
 
@@ -526,11 +490,8 @@ export default function BillingPage() {
             setBatchClientIds([])
             setBatchClientSearch('')
             fetchInvoices()
-        } catch (err: any) {
-            const message = err?.response?.data?.message
-                || (typeof err?.response?.data?.detail === 'string' ? err.response.data.detail : '')
-                || 'Failed to generate invoices'
-            toast.error(message)
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to generate invoices'))
         } finally {
             setBatchGenerating(false)
         }
@@ -1153,8 +1114,8 @@ export default function BillingPage() {
                         toast.success('Invoice created successfully')
                         setIsCreateInvoiceOpen(false)
                         fetchInvoices()
-                    } catch (err: any) {
-                        toast.error(err?.response?.data?.detail || err?.response?.data?.message || 'Failed to create invoice')
+                    } catch (err: unknown) {
+                        toast.error(getApiErrorMessage(err, 'Failed to create invoice'))
                     } finally {
                         setIsSaving(false)
                     }
@@ -1442,20 +1403,11 @@ export default function BillingPage() {
             {/* Record Payment Modal */}
             <Modal
                 isOpen={isPaymentModalOpen}
-                onClose={() => { setIsPaymentModalOpen(false); setStripeClientSecret(null); setPaymentFormData({ amount: '', paymentMethod: 'credit_card', reference: '' }) }}
+                onClose={() => { setIsPaymentModalOpen(false); setPaymentFormData({ amount: '', paymentMethod: 'credit_card', reference: '' }) }}
                 title="Record Payment"
                 size="sm"
             >
-                {stripeClientSecret && selectedInvoice ? (
-                    <StripePaymentForm
-                        clientSecret={stripeClientSecret}
-                        amount={parseFloat(paymentFormData.amount)}
-                        invoiceNumber={selectedInvoice.invoice_number}
-                        onSuccess={handleStripeSuccess}
-                        onCancel={() => setStripeClientSecret(null)}
-                    />
-                ) : (
-                <form className="payment-form" onSubmit={(e) => { e.preventDefault(); paymentFormData.paymentMethod === 'credit_card' ? handleStripePayment() : handleRecordPayment() }}>
+                <form className="payment-form" onSubmit={(e) => { e.preventDefault(); handleRecordPayment() }}>
                     {selectedInvoice && (
                         <div className="payment-invoice-info">
                             <p>Invoice: <strong>{selectedInvoice.invoice_number}</strong></p>
@@ -1483,7 +1435,7 @@ export default function BillingPage() {
                             onChange={(e) => setPaymentFormData(prev => ({ ...prev, paymentMethod: e.target.value }))}
                             className="form-input-basic"
                         >
-                            <option value="credit_card">Credit Card (Stripe)</option>
+                            <option value="credit_card">Credit Card</option>
                             <option value="eft">EFT Transfer</option>
                             <option value="check">Check</option>
                             <option value="cash">Cash</option>
@@ -1491,7 +1443,6 @@ export default function BillingPage() {
                         </select>
                     </div>
 
-                    {paymentFormData.paymentMethod !== 'credit_card' && (
                     <div className="form-group">
                         <label className="form-label">Reference #</label>
                         <input
@@ -1502,26 +1453,16 @@ export default function BillingPage() {
                             placeholder="Check #, Transaction ID, etc."
                         />
                     </div>
-                    )}
 
                     <div className="payment-form-actions">
                         <button type="button" className="btn-secondary" onClick={() => setIsPaymentModalOpen(false)}>
                             Cancel
                         </button>
-                        <button type="submit" className="btn-primary" disabled={isStripeLoading || isSaving}>
-                            {paymentFormData.paymentMethod === 'credit_card' ? (
-                                isStripeLoading ? (
-                                    <><span className="spinner-sm" /> Loading...</>
-                                ) : (
-                                    <><CreditCard size={16} weight="bold" /> Pay with Card</>
-                                )
-                            ) : (
-                                <><CheckCircle size={16} weight="bold" /> Record Payment</>
-                            )}
+                        <button type="submit" className="btn-primary" disabled={isSaving}>
+                                <CheckCircle size={16} weight="bold" /> Record Payment
                         </button>
                     </div>
                 </form>
-                )}
             </Modal>
 
             <Modal

@@ -37,6 +37,26 @@ export default function RiskAssessment({
         onChange(key, next)
     }
 
+    const riskColorClass = (level: string) => {
+        switch (level) {
+            case 'Low': return 'risk-badge risk-low'
+            case 'Moderate': return 'risk-badge risk-moderate'
+            case 'High': return 'risk-badge risk-high'
+            case 'Imminent': return 'risk-badge risk-imminent'
+            default: return 'risk-badge'
+        }
+    }
+
+    const selectColorClass = (level: string) => {
+        switch (level) {
+            case 'Low': return 'form-input-basic risk-select-low'
+            case 'Moderate': return 'form-input-basic risk-select-moderate'
+            case 'High': return 'form-input-basic risk-select-high'
+            case 'Imminent': return 'form-input-basic risk-select-imminent'
+            default: return 'form-input-basic'
+        }
+    }
+
     return (
         <div className={`clinical-section risk-section ${hasRisk && (suicideLevel !== 'None' || homicideLevel !== 'None') ? 'risk-flagged' : ''}`}>
             <button
@@ -49,10 +69,10 @@ export default function RiskAssessment({
                     <Warning size={20} weight="duotone" />
                     <h4>Risk Assessment</h4>
                     {hasRisk && suicideLevel !== 'None' && (
-                        <span className="risk-badge">SI: {suicideLevel}</span>
+                        <span className={riskColorClass(suicideLevel)}>SI: {suicideLevel}</span>
                     )}
                     {hasRisk && homicideLevel !== 'None' && (
-                        <span className="risk-badge">HI: {homicideLevel}</span>
+                        <span className={riskColorClass(homicideLevel)}>HI: {homicideLevel}</span>
                     )}
                 </div>
                 <span className={`clinical-section-chevron ${collapsed ? '' : 'open'}`}>
@@ -66,7 +86,7 @@ export default function RiskAssessment({
                         <div className="form-group">
                             <label className="form-label">Suicidality Level</label>
                             <select
-                                className="form-input-basic"
+                                className={selectColorClass(suicideLevel)}
                                 value={suicideLevel}
                                 onChange={e => onChange('risk_suicide_level', e.target.value)}
                                 disabled={disabled}
@@ -80,7 +100,7 @@ export default function RiskAssessment({
                         <div className="form-group">
                             <label className="form-label">Homicidality Level</label>
                             <select
-                                className="form-input-basic"
+                                className={selectColorClass(homicideLevel)}
                                 value={homicideLevel}
                                 onChange={e => onChange('risk_homicide_level', e.target.value)}
                                 disabled={disabled}

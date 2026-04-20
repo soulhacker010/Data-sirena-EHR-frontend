@@ -85,7 +85,7 @@ export default function Sidebar() {
     }
 
     return (
-        <aside className="sidebar">
+        <aside className="sidebar" aria-label="Main navigation">
             {/* Logo */}
             <div className="sidebar-logo">
                 <img src="/images/EHRlogo.png" alt="Sirena Health" className="sidebar-logo-img" />
@@ -94,7 +94,7 @@ export default function Sidebar() {
             {/* Main Menu */}
             <div className="sidebar-section">
                 <p className="sidebar-section-label">Main Menu</p>
-                <nav className="sidebar-nav">
+                <nav className="sidebar-nav" aria-label="Main menu">
                     {visibleMain.map((item) => (
                         <NavLink
                             key={item.id}
@@ -112,7 +112,7 @@ export default function Sidebar() {
             {visibleAdmin.length > 0 && (
                 <div className="sidebar-section">
                     <p className="sidebar-section-label">Administration</p>
-                    <nav className="sidebar-nav">
+                    <nav className="sidebar-nav" aria-label="Administration menu">
                         {visibleAdmin.map((item) => (
                             <NavLink
                                 key={item.id}
@@ -130,7 +130,7 @@ export default function Sidebar() {
             {/* Other Menu */}
             <div className="sidebar-section">
                 <p className="sidebar-section-label">Other</p>
-                <nav className="sidebar-nav">
+                <nav className="sidebar-nav" aria-label="Settings and notifications">
                     {visibleOther.map((item) => (
                         <NavLink
                             key={item.id}

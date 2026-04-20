@@ -33,7 +33,7 @@ export default function ConfirmDialog({
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={title} size="sm">
-            <div className="confirm-dialog">
+            <div className="confirm-dialog" role="alertdialog" aria-describedby="confirm-message">
                 {variant === 'danger' && (
                     <div className="confirm-icon danger">
                         <Warning size={32} weight="fill" />

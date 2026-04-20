@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import toast from 'react-hot-toast'
+import { getApiErrorMessage } from '../utils/errors'
 import { DashboardLayout } from '../components/layout'
 import { EmptyState, PageSkeleton } from '../components/ui'
 import { auditApi } from '../api'
@@ -77,8 +78,8 @@ export default function AuditLogPage() {
                 page_size: 100,
             })
             setLogs(res.results)
-        } catch (err: any) {
-            toast.error(err?.response?.data?.detail || 'Failed to load audit logs')
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to load audit logs'))
         } finally {
             setIsLoading(false)
         }

@@ -1594,6 +1594,18 @@ button {
   font-weight: 500;
 }
 
+.mrn-badge {
+  font-family: monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border);
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  color: var(--color-text);
+  letter-spacing: 0.03em;
+}
+
 .detail-header-actions {
   display: flex;
   gap: 0.75rem;
@@ -6119,6 +6131,40 @@ input[type="date"] {
   color: var(--color-error, #dc2626);
 }
 
+.risk-badge.risk-low {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.risk-badge.risk-moderate {
+  background: #fef9c3;
+  color: #b45309;
+}
+
+.risk-badge.risk-high {
+  background: #ffedd5;
+  color: #c2410c;
+}
+
+.risk-badge.risk-imminent {
+  background: #fee2e2;
+  color: #dc2626;
+  animation: riskPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes riskPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.risk-select-low { border-left: 3px solid #15803d !important; }
+.risk-select-moderate { border-left: 3px solid #b45309 !important; }
+.risk-select-high { border-left: 3px solid #c2410c !important; }
+.risk-select-imminent {
+  border-left: 3px solid #dc2626 !important;
+  background-color: #fff5f5 !important;
+}
+
 /* ABA Section */
 .aba-content {
   padding: 1rem;
@@ -6165,6 +6211,52 @@ input[type="date"] {
 /* Interventions Grid */
 .interventions-grid {
   padding: 1rem;
+}
+
+.interventions-custom-input {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.75rem 1rem 1rem;
+  border-top: 1px solid var(--color-border);
+}
+
+.interventions-custom-input .form-input-basic {
+  flex: 1;
+}
+
+.interventions-custom-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+}
+
+.intervention-custom-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+}
+
+.intervention-custom-tag button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  color: #0369a1;
+  display: flex;
+  align-items: center;
+  opacity: 0.7;
+}
+
+.intervention-custom-tag button:hover {
+  opacity: 1;
 }
 
 /* Shared: Checkbox Grid */
@@ -6539,12 +6631,13 @@ input[type="date"] {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  background: var(--color-primary-light, #eef2ff);
-  color: var(--color-primary, #4f46e5);
+  background: #f3f4f6;
+  color: #111827;
   padding: 0.25rem 0.5rem;
   border-radius: 0.375rem;
   font-size: 0.8rem;
   font-weight: 500;
+  border: 1px solid #e5e7eb;
 }
 
 .dx-tag button {
@@ -8547,6 +8640,13 @@ tr.overdue-critical {
   margin-top: 0.375rem;
   font-weight: 500;
   animation: fieldErrorFadeIn 0.2s ease-out;
+}
+
+.field-hint {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #6B7280);
+  margin-top: 0.25rem;
 }
 
 @keyframes fieldErrorFadeIn {

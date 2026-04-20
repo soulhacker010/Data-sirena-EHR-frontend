@@ -1,6 +1,7 @@
 export interface Client {
     id: string
     organization_id: string
+    mrn?: string
     first_name: string
     last_name: string
     date_of_birth: string

@@ -10,6 +10,7 @@ export { auditApi } from './audit'
 export { reportsApi } from './reports'
 export { settingsApi } from './settings'
 export { lookupsApi } from './lookups'
+export { intakesApi } from './intakes'
 export { default as apiClient } from './client'
 export { getApiErrorMessage } from './errors'
 

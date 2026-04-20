@@ -1,16 +1,18 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { toast } from 'react-hot-toast'
 import {
     CaretDown, CaretRight, FloppyDisk, PencilSimple, Copy,
-    Plus, Trash, ArrowsClockwise, Link as LinkIcon
+    Plus, Trash, ArrowsClockwise, Link as LinkIcon, PenNib, CheckCircle, FilePdf
 } from '@phosphor-icons/react'
 import DashboardLayout from '../components/layout/DashboardLayout'
 import { InterventionsChecklist } from '../components/clinical'
+import SignaturePad from '../components/ui/SignaturePad'
 import { treatmentPlansApi } from '../api/treatmentPlans'
 import type { TreatmentPlan, TreatmentPlanGoal } from '../api/treatmentPlans'
 import { useAuth } from '../context'
 import { getApiErrorMessage } from '../utils/errors'
+import { printTreatmentPlan } from '../utils/printTreatmentPlan'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const GOAL_TYPES = [
@@ -90,6 +92,13 @@ export default function TreatmentPlanEditorPage() {
     })
 
     const isLocked = plan?.is_locked || false
+
+    const [isSigningProvider, setIsSigningProvider] = useState(false)
+    const [isCoSigning, setIsCoSigning] = useState(false)
+    const [isSigning, setIsSigning] = useState(false)
+    const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
+    const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const isFirstRender = useRef(true)
 
     // ─── Review banner logic (4.11) ───────────────────────────────────────────
     const reviewDue = plan?.review_date
@@ -201,6 +210,28 @@ export default function TreatmentPlanEditorPage() {
         }
     }
 
+    // ─── Auto-save ────────────────────────────────────────────────────────────
+    useEffect(() => {
+        if (!isEditMode || !id || isLocked) return
+        if (isFirstRender.current) { isFirstRender.current = false; return }
+        if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
+        autoSaveTimer.current = setTimeout(async () => {
+            setAutoSaveStatus('saving')
+            try {
+                const updated = await treatmentPlansApi.update(id, {
+                    start_date: startDate,
+                    review_date: reviewDate || undefined,
+                    goals,
+                    plan_data: planData,
+                })
+                setPlan(updated)
+                setAutoSaveStatus('saved')
+                setTimeout(() => setAutoSaveStatus('idle'), 2000)
+            } catch { setAutoSaveStatus('idle') }
+        }, 2000)
+        return () => { if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current) }
+    }, [planData, goals]) // eslint-disable-line react-hooks/exhaustive-deps
+
     // ─── Copy from Previous (4.2) ─────────────────────────────────────────────
     const handleCopyFromPrevious = async () => {
         if (!selectedClientId) { toast.error('Select a client first'); return }
@@ -214,7 +245,7 @@ export default function TreatmentPlanEditorPage() {
         }
     }
 
-    // ─── Pull Intake Strengths (4.10) ─────────────────────────────────────────
+    // ─── Pull Intake Strengths + Diagnosis (4.10, 4.1) ───────────────────────
     const handlePullIntakeStrengths = async () => {
         if (!selectedClientId) { toast.error('Select a client first'); return }
         try {
@@ -224,7 +255,9 @@ export default function TreatmentPlanEditorPage() {
             updatePlanField('tentative_goals', strengths.tentative_goals)
             if (strengths.treatment_frequency) updatePlanField('frequency', strengths.treatment_frequency)
             if (strengths.treatment_duration) updatePlanField('duration', strengths.treatment_duration)
-            toast.success('Pulled strengths from intake')
+            if (strengths.primary_diagnosis) updatePlanField('primary_diagnosis', strengths.primary_diagnosis)
+            if (strengths.secondary_diagnoses) updatePlanField('secondary_diagnoses', strengths.secondary_diagnoses)
+            toast.success('Pulled from intake')
         } catch {
             toast.error('No signed intake found for this client')
         }
@@ -258,6 +291,13 @@ export default function TreatmentPlanEditorPage() {
                         )}
                     </div>
                     <div className="intake-editor-actions">
+                        {autoSaveStatus === 'saving' && <span className="autosave-indicator saving">Saving…</span>}
+                        {autoSaveStatus === 'saved' && <span className="autosave-indicator saved">Saved</span>}
+                        {plan && (
+                            <button type="button" className="btn-secondary" onClick={() => printTreatmentPlan(plan, user?.organization_name)}>
+                                <FilePdf size={16} /> Export PDF
+                            </button>
+                        )}
                         {!isLocked && (
                             <>
                                 <button type="button" className="btn-secondary" onClick={handleCopyFromPrevious}>
@@ -343,6 +383,16 @@ export default function TreatmentPlanEditorPage() {
                                             disabled={isLocked} />
                                     </div>
                                 </div>
+                                {(planData.secondary_diagnoses as Array<{ code: string; label: string }> | undefined)?.length ? (
+                                    <div className="form-group" style={{ marginTop: '0.75rem' }}>
+                                        <label>Secondary Diagnoses</label>
+                                        <div className="dx-tags">
+                                            {(planData.secondary_diagnoses as Array<{ code: string; label: string }>).map(d => (
+                                                <span key={d.code} className="dx-tag">{d.code}{d.label ? ` — ${d.label}` : ''}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ) : null}
                             </div>
                         )}
                     </div>
@@ -586,18 +636,75 @@ export default function TreatmentPlanEditorPage() {
                                     <h4>Provider Signature</h4>
                                     {plan?.signed_at ? (
                                         <div className="signature-status signed">
-                                            ✓ Signed by {plan.provider_name} on {new Date(plan.signed_at).toLocaleDateString()}
+                                            <CheckCircle size={16} weight="fill" /> Signed by {plan.provider_name} on {new Date(plan.signed_at).toLocaleDateString()}
+                                        </div>
+                                    ) : plan && !isSigningProvider ? (
+                                        <button
+                                            type="button"
+                                            className="btn-secondary btn-sm"
+                                            onClick={() => setIsSigningProvider(true)}
+                                            disabled={isSigning}
+                                        >
+                                            <PenNib size={16} /> Sign as Provider
+                                        </button>
+                                    ) : plan && isSigningProvider ? (
+                                        <div style={{ marginTop: '0.5rem' }}>
+                                            <SignaturePad
+                                                onSave={async (sig) => {
+                                                    setIsSigning(true)
+                                                    try {
+                                                        const updated = await treatmentPlansApi.sign(plan.id, sig)
+                                                        setPlan(updated)
+                                                        setIsSigningProvider(false)
+                                                        toast.success('Treatment plan signed')
+                                                    } catch (err: unknown) {
+                                                        toast.error(getApiErrorMessage(err, 'Failed to sign'))
+                                                    } finally {
+                                                        setIsSigning(false)
+                                                    }
+                                                }}
+                                                onCancel={() => setIsSigningProvider(false)}
+                                            />
                                         </div>
                                     ) : (
-                                        <p className="intake-helper-text">Save the plan first, then sign from the Treatment Plans list.</p>
+                                        <p className="intake-helper-text">Save the plan first to enable signing.</p>
                                     )}
-                                    <h4 style={{ marginTop: '1rem' }}>Co-Signature (Supervisor)</h4>
+
+                                    <h4 style={{ marginTop: '1.5rem' }}>Co-Signature (Supervisor)</h4>
                                     {plan?.co_signed_at ? (
                                         <div className="signature-status signed">
-                                            ✓ Co-signed by {plan.co_signer_name} on {new Date(plan.co_signed_at).toLocaleDateString()}
+                                            <CheckCircle size={16} weight="fill" /> Co-signed by {plan.co_signer_name} on {new Date(plan.co_signed_at).toLocaleDateString()}
+                                        </div>
+                                    ) : plan?.signed_at && !isCoSigning ? (
+                                        <button
+                                            type="button"
+                                            className="btn-secondary btn-sm"
+                                            onClick={() => setIsCoSigning(true)}
+                                            disabled={isSigning}
+                                        >
+                                            <PenNib size={16} /> Co-Sign as Supervisor
+                                        </button>
+                                    ) : plan?.signed_at && isCoSigning ? (
+                                        <div style={{ marginTop: '0.5rem' }}>
+                                            <SignaturePad
+                                                onSave={async (sig) => {
+                                                    setIsSigning(true)
+                                                    try {
+                                                        const updated = await treatmentPlansApi.coSign(plan.id, sig)
+                                                        setPlan(updated)
+                                                        setIsCoSigning(false)
+                                                        toast.success('Co-signature collected')
+                                                    } catch (err: unknown) {
+                                                        toast.error(getApiErrorMessage(err, 'Failed to co-sign'))
+                                                    } finally {
+                                                        setIsSigning(false)
+                                                    }
+                                                }}
+                                                onCancel={() => setIsCoSigning(false)}
+                                            />
                                         </div>
                                     ) : (
-                                        <p className="intake-helper-text">Supervisor co-signature available after provider signs.</p>
+                                        <p className="intake-helper-text">Provider must sign before supervisor co-signature.</p>
                                     )}
                                 </div>
                             </div>

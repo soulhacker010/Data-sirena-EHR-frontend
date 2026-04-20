@@ -1,4 +1,5 @@
-import { ListChecks } from '@phosphor-icons/react'
+import { useState } from 'react'
+import { ListChecks, Plus, X } from '@phosphor-icons/react'
 import { INTERVENTION_OPTIONS } from '../../constants/clinicalFields'
 
 interface InterventionsChecklistProps {
@@ -16,11 +17,30 @@ export default function InterventionsChecklist({
     collapsed = false,
     onToggleCollapse,
 }: InterventionsChecklistProps) {
+    const [customInput, setCustomInput] = useState('')
+
+    const predefined = INTERVENTION_OPTIONS
+    const custom = selected.filter(s => !predefined.includes(s))
+
     const toggle = (item: string) => {
         const next = selected.includes(item)
             ? selected.filter(i => i !== item)
             : [...selected, item]
         onChange(next)
+    }
+
+    const addCustom = () => {
+        const trimmed = customInput.trim()
+        if (!trimmed || selected.includes(trimmed)) {
+            setCustomInput('')
+            return
+        }
+        onChange([...selected, trimmed])
+        setCustomInput('')
+    }
+
+    const removeCustom = (item: string) => {
+        onChange(selected.filter(i => i !== item))
     }
 
     return (
@@ -44,19 +64,58 @@ export default function InterventionsChecklist({
             </button>
 
             {!collapsed && (
-                <div className="checkbox-grid interventions-grid">
-                    {INTERVENTION_OPTIONS.map(item => (
-                        <label key={item} className="checkbox-item">
+                <>
+                    <div className="checkbox-grid interventions-grid">
+                        {predefined.map(item => (
+                            <label key={item} className="checkbox-item">
+                                <input
+                                    type="checkbox"
+                                    checked={selected.includes(item)}
+                                    onChange={() => toggle(item)}
+                                    disabled={disabled}
+                                />
+                                <span>{item}</span>
+                            </label>
+                        ))}
+                    </div>
+
+                    {/* Custom interventions */}
+                    {custom.length > 0 && (
+                        <div className="interventions-custom-list">
+                            {custom.map(item => (
+                                <span key={item} className="intervention-custom-tag">
+                                    {item}
+                                    {!disabled && (
+                                        <button type="button" onClick={() => removeCustom(item)}>
+                                            <X size={12} weight="bold" />
+                                        </button>
+                                    )}
+                                </span>
+                            ))}
+                        </div>
+                    )}
+
+                    {!disabled && (
+                        <div className="interventions-custom-input">
                             <input
-                                type="checkbox"
-                                checked={selected.includes(item)}
-                                onChange={() => toggle(item)}
-                                disabled={disabled}
+                                type="text"
+                                className="form-input-basic"
+                                placeholder="Add custom intervention…"
+                                value={customInput}
+                                onChange={e => setCustomInput(e.target.value)}
+                                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addCustom() } }}
                             />
-                            <span>{item}</span>
-                        </label>
-                    ))}
-                </div>
+                            <button
+                                type="button"
+                                className="btn-secondary btn-sm"
+                                onClick={addCustom}
+                                disabled={!customInput.trim()}
+                            >
+                                <Plus size={14} weight="bold" /> Add
+                            </button>
+                        </div>
+                    )}
+                </>
             )}
         </div>
     )

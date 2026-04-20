@@ -6,7 +6,6 @@ import type {
     CreateInvoicePayload,
     BatchInvoicePayload,
     RecordPaymentPayload,
-    StripePaymentPayload,
     SubmitClaimPayload,
     PostClaimPaymentPayload,
     WriteOffPayload,
@@ -67,15 +66,6 @@ export const billingApi = {
         return data
     },
 
-    createStripePayment: async (payload: StripePaymentPayload): Promise<{ client_secret: string }> => {
-        const { data } = await apiClient.post('/payments/stripe/', payload)
-        return data
-    },
-
-    confirmStripePayment: async (paymentIntentId: string): Promise<{ status: string; invoice_status?: string }> => {
-        const { data } = await apiClient.post('/payments/stripe/confirm/', { payment_intent_id: paymentIntentId })
-        return data
-    },
 
     // ─── Claims ───────────────────────────────────────────────────────────
     getClaims: async (filters?: ClaimFilters): Promise<PaginatedResponse<Claim>> => {

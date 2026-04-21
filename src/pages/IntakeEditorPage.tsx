@@ -961,15 +961,23 @@ export default function IntakeEditorPage() {
                             {Object.entries(intakeData).map(([key, value]) => {
                                 if (!value || (Array.isArray(value) && value.length === 0)) return null
                                 const label = key.replace(/^intake_/, '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+                                const renderItem = (v: unknown) => {
+                                    if (v && typeof v === 'object' && !Array.isArray(v)) {
+                                        const obj = v as Record<string, unknown>
+                                        if (obj.code && obj.label) return `${obj.code} — ${obj.label}`
+                                        return Object.values(obj).join(' ')
+                                    }
+                                    return String(v)
+                                }
                                 return (
                                     <div key={key} className="intake-preview-field">
                                         <p className="intake-preview-label">{label}</p>
                                         {Array.isArray(value) ? (
                                             <ul className="intake-preview-list">
-                                                {(value as string[]).map((v, i) => <li key={i}>{v}</li>)}
+                                                {value.map((v, i) => <li key={i}>{renderItem(v)}</li>)}
                                             </ul>
                                         ) : (
-                                            <p className="intake-preview-value">{String(value)}</p>
+                                            <p className="intake-preview-value">{renderItem(value)}</p>
                                         )}
                                     </div>
                                 )

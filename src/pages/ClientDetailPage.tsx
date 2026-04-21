@@ -970,7 +970,7 @@ export default function ClientDetailPage() {
                             </button>
                             <button
                                 className="btn-secondary"
-                                onClick={() => navigate('/billing/invoices')}
+                                onClick={() => navigate('/billing')}
                             >
                                 <FileText size={18} weight="bold" /> View All Billing
                             </button>

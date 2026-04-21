@@ -313,7 +313,7 @@ export default function CalendarPage() {
         const colors = getEventColor(apt)
         return {
             id: apt.id,
-            title: `${aptClientName(apt)} — ${apt.service_code || 'Session'}`,
+            title: aptClientName(apt),
             start: apt.start_time,
             end: apt.end_time,
             backgroundColor: colors.bg,
@@ -323,6 +323,36 @@ export default function CalendarPage() {
             extendedProps: apt,
         }
     })
+
+    // Compact event renderer — stays readable even when columns are narrow
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const renderEventContent = (eventInfo: any) => {
+        const apt = eventInfo.event.extendedProps as Appointment
+        const start = new Date(apt.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+        const isCancelled = apt.status === 'cancelled'
+        return (
+            <div style={{ padding: '2px 4px', overflow: 'hidden', lineHeight: 1.3 }}>
+                <div style={{ fontSize: '0.68rem', opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {start}
+                </div>
+                <div style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    textDecoration: isCancelled ? 'line-through' : 'none',
+                }}>
+                    {aptClientName(apt)}
+                </div>
+                {apt.service_code && (
+                    <div style={{ fontSize: '0.62rem', opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {apt.service_code}
+                    </div>
+                )}
+            </div>
+        )
+    }
 
     // Navigate calendar
     const goToToday = () => {
@@ -781,17 +811,15 @@ export default function CalendarPage() {
                     weekends={true}
                     select={handleDateSelect}
                     eventClick={handleEventClick}
+                    eventContent={renderEventContent}
+                    eventMinHeight={36}
                     height="auto"
                     slotMinTime="07:00:00"
                     slotMaxTime="20:00:00"
                     slotDuration="00:30:00"
+                    slotLabelInterval="01:00:00"
                     allDaySlot={false}
                     nowIndicator={true}
-                    eventTimeFormat={{
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        meridiem: 'short'
-                    }}
                 />
             </div>
 

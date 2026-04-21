@@ -2346,7 +2346,7 @@ input[type="date"] {
 
 .fc-event {
   border-radius: 0.375rem;
-  padding: 0.25rem 0.5rem;
+  padding: 0.125rem 0.25rem;
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
@@ -2533,10 +2533,23 @@ input[type="date"] {
 
 .appointment-actions {
   display: flex;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
   margin-top: 1rem;
   padding-top: 1rem;
   border-top: 1px solid var(--color-border);
+}
+
+.appointment-actions .btn-primary,
+.appointment-actions .btn-secondary,
+.appointment-actions .btn-danger-outline {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.8rem;
+  text-align: center;
+  justify-content: center;
+  white-space: nowrap;
 }
 
 .btn-danger-outline {
@@ -2849,6 +2862,78 @@ input[type="date"] {
 /* ====================== */
 /* BILLING PAGE           */
 /* ====================== */
+
+/* Billing Summary Grid — Client Detail Page */
+.billing-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.billing-summary-card {
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.billing-summary-card .summary-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 0.625rem;
+  background: rgba(13, 148, 136, 0.08);
+  color: var(--color-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.billing-summary-card .summary-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.billing-summary-card .summary-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+
+.billing-summary-card .summary-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.billing-actions {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1024px) {
+  .billing-summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .billing-summary-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
 
 /* Billing Summary Cards */
 .billing-summary {

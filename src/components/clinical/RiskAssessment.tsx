@@ -37,22 +37,28 @@ export default function RiskAssessment({
         onChange(key, next)
     }
 
+    // E10: 3-bucket stoplight model per Dr. Joe's explicit ask:
+    //   None → GREEN, Low → YELLOW, Moderate/High/Imminent → RED.
+    // We keep the Imminent pulse animation (via a class modifier) so the
+    // single most-urgent level still reads differently inside the red bucket.
     const riskColorClass = (level: string) => {
         switch (level) {
+            case 'None': return 'risk-badge risk-none'
             case 'Low': return 'risk-badge risk-low'
-            case 'Moderate': return 'risk-badge risk-moderate'
-            case 'High': return 'risk-badge risk-high'
-            case 'Imminent': return 'risk-badge risk-imminent'
+            case 'Moderate':
+            case 'High': return 'risk-badge risk-elevated'
+            case 'Imminent': return 'risk-badge risk-elevated risk-imminent'
             default: return 'risk-badge'
         }
     }
 
     const selectColorClass = (level: string) => {
         switch (level) {
+            case 'None': return 'form-input-basic risk-select-none'
             case 'Low': return 'form-input-basic risk-select-low'
-            case 'Moderate': return 'form-input-basic risk-select-moderate'
-            case 'High': return 'form-input-basic risk-select-high'
-            case 'Imminent': return 'form-input-basic risk-select-imminent'
+            case 'Moderate':
+            case 'High':
+            case 'Imminent': return 'form-input-basic risk-select-elevated'
             default: return 'form-input-basic'
         }
     }

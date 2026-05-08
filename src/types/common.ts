@@ -22,7 +22,17 @@ export interface DashboardStats {
     revenue_mtd: number
     upcoming_appointments: DashboardAppointment[]
     recent_activity: ActivityItem[]
+    /** E22: drafts the user started but didn't complete, across notes/intakes/treatment-plans. */
+    incomplete_drafts?: IncompleteDraft[]
     billing_overview: BillingOverview
+}
+
+export interface IncompleteDraft {
+    kind: 'session_notes' | 'intakes' | 'treatment_plans'
+    id: string
+    client_name: string
+    status: string
+    updated_at: string
 }
 
 export interface DashboardAppointment {

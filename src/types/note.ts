@@ -107,4 +107,6 @@ export interface NoteFilters {
     end_date?: string
     page?: number
     page_size?: number
+    /** E24: filter by linked appointment to find "is there already a note for this session?" */
+    appointment?: string
 }

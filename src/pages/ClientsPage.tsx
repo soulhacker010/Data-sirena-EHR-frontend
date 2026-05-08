@@ -5,6 +5,7 @@ import { DashboardLayout } from '../components/layout'
 import { ActionMenu, AddClientModal, EditClientModal, ConfirmDialog, ImportClientsModal, EmptyState, TableSkeleton } from '../components/ui'
 import { clientsApi, getApiErrorMessage } from '../api'
 import { calculateAge, formatDateSafe } from '../utils/dates'
+import { ServiceCategoryBadges } from '../components/shared'
 import type { Client } from '../types'
 import {
     MagnifyingGlass,
@@ -136,7 +137,8 @@ export default function ClientsPage() {
         emergencyContactPhone: client.emergency_contact_phone || '',
         insuranceName: client.insurance_primary_name || '',
         memberId: client.insurance_primary_id || '',
-        groupNumber: client.insurance_primary_group || ''
+        groupNumber: client.insurance_primary_group || '',
+        serviceCategories: client.service_categories || [],
     })
 
     // Action handlers
@@ -193,6 +195,7 @@ export default function ClientsPage() {
                 insurance_primary_name: formData.insuranceName,
                 insurance_primary_id: formData.memberId,
                 insurance_primary_group: formData.groupNumber,
+                service_categories: formData.serviceCategories,
             })
             toast.success(`${formData.firstName} ${formData.lastName} added successfully`)
             setIsAddModalOpen(false)
@@ -222,6 +225,7 @@ export default function ClientsPage() {
                 insurance_primary_name: formData.insuranceName,
                 insurance_primary_id: formData.memberId,
                 insurance_primary_group: formData.groupNumber,
+                service_categories: formData.serviceCategories,
             })
             toast.success('Client updated successfully')
             setIsEditModalOpen(false)
@@ -365,7 +369,15 @@ export default function ClientsPage() {
                                                     {client.first_name[0]}{client.last_name[0]}
                                                 </div>
                                                 <div className="client-info">
-                                                    <p className="client-name">{client.first_name} {client.last_name}</p>
+                                                    <p className="client-name">
+                                                        {client.first_name} {client.last_name}
+                                                        {client.service_categories && client.service_categories.length > 0 && (
+                                                            <ServiceCategoryBadges
+                                                                categories={client.service_categories}
+                                                                className="ml-2"
+                                                            />
+                                                        )}
+                                                    </p>
                                                     <p className="client-meta">
                                                         {client.age != null ? `Age ${client.age}` : `Age ${calculateAge(client.date_of_birth)}`} · DOB {formatDate(client.date_of_birth)}
                                                     </p>

@@ -22,12 +22,39 @@ export interface Client {
     insurance_secondary_id?: string
     insurance_secondary_group?: string
     diagnosis_codes: string[]
+    /** E21: service categories the client is enrolled in (Psych/OT/Speech/Bx/etc.). */
+    service_categories?: ServiceCategory[]
     is_active: boolean
     next_appointment?: string
     sessions_this_month?: number
     created_at: string
     updated_at: string
 }
+
+export type ServiceCategory =
+    | 'psychotherapy'
+    | 'behavior'
+    | 'occupational'
+    | 'speech'
+    | 'biofeedback'
+    | 'assessment'
+    | 'other'
+
+export const SERVICE_CATEGORY_OPTIONS: Array<{
+    value: ServiceCategory
+    label: string
+    short: string
+    color: string
+    bg: string
+}> = [
+    { value: 'psychotherapy', label: 'Psychotherapy', short: 'Psych', color: '#5b21b6', bg: '#ede9fe' },
+    { value: 'behavior', label: 'Behavior / ABA', short: 'Bx', color: '#0f766e', bg: '#ccfbf1' },
+    { value: 'occupational', label: 'Occupational Therapy', short: 'OT', color: '#9a3412', bg: '#ffedd5' },
+    { value: 'speech', label: 'Speech Therapy', short: 'Speech', color: '#1e40af', bg: '#dbeafe' },
+    { value: 'biofeedback', label: 'Biofeedback', short: 'BF', color: '#166534', bg: '#dcfce7' },
+    { value: 'assessment', label: 'Assessment', short: 'Eval', color: '#854d0e', bg: '#fef3c7' },
+    { value: 'other', label: 'Other', short: 'Other', color: '#475569', bg: '#e2e8f0' },
+]
 
 export interface ClientDetail extends Client {
     authorizations: Authorization[]
@@ -97,6 +124,7 @@ export interface CreateClientPayload {
     insurance_secondary_id?: string
     insurance_secondary_group?: string
     diagnosis_codes?: string[]
+    service_categories?: ServiceCategory[]
 }
 
 export type UpdateClientPayload = Partial<CreateClientPayload> & {

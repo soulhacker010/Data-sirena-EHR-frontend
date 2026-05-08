@@ -17,7 +17,14 @@ import {
     SignIn,
     SignOut,
     Key,
-    CalendarBlank
+    CalendarBlank,
+    PenNib,
+    FileArrowDown,
+    Warning,
+    FileCsv,
+    ShieldCheck,
+    Lock,
+    Play,
 } from '@phosphor-icons/react'
 
 const actionLabels: Record<string, string> = {
@@ -27,17 +34,33 @@ const actionLabels: Record<string, string> = {
     view: 'Viewed',
     login: 'Login',
     logout: 'Logout',
-    password_change: 'Password Reset'
+    password_change: 'Password Changed',
+    failed_login: 'Failed Login',
+    sign: 'Note Signed',
+    co_sign: 'Note Co-signed',
+    session_start: 'Session Started',
+    phi_access: 'PHI Accessed',
+    document_access: 'Document Viewed',
+    document_download: 'Document Downloaded',
+    export: 'Data Exported',
 }
 
 const actionIcons: Record<string, React.ReactNode> = {
-    create: <Plus size={14} weight="bold" />,
-    update: <PencilSimple size={14} weight="bold" />,
-    delete: <Trash size={14} weight="bold" />,
-    view: <Eye size={14} weight="bold" />,
-    login: <SignIn size={14} weight="bold" />,
-    logout: <SignOut size={14} weight="bold" />,
-    password_change: <Key size={14} weight="bold" />
+    create: <Plus size={13} weight="bold" />,
+    update: <PencilSimple size={13} weight="bold" />,
+    delete: <Trash size={13} weight="bold" />,
+    view: <Eye size={13} weight="bold" />,
+    login: <SignIn size={13} weight="bold" />,
+    logout: <SignOut size={13} weight="bold" />,
+    password_change: <Key size={13} weight="bold" />,
+    failed_login: <Warning size={13} weight="bold" />,
+    sign: <PenNib size={13} weight="bold" />,
+    co_sign: <PenNib size={13} weight="bold" />,
+    session_start: <Play size={13} weight="bold" />,
+    phi_access: <ShieldCheck size={13} weight="bold" />,
+    document_access: <Eye size={13} weight="bold" />,
+    document_download: <FileArrowDown size={13} weight="bold" />,
+    export: <FileCsv size={13} weight="bold" />,
 }
 
 const actionColors: Record<string, string> = {
@@ -47,8 +70,58 @@ const actionColors: Record<string, string> = {
     view: 'action-view',
     login: 'action-login',
     logout: 'action-logout',
-    password_change: 'action-password'
+    password_change: 'action-password',
+    failed_login: 'action-danger',
+    sign: 'action-sign',
+    co_sign: 'action-sign',
+    session_start: 'action-session',
+    phi_access: 'action-phi',
+    document_access: 'action-view',
+    document_download: 'action-download',
+    export: 'action-export',
 }
+
+const tableLabels: Record<string, string> = {
+    clients: 'Client',
+    notes: 'Note',
+    appointments: 'Appointment',
+    invoices: 'Invoice',
+    payments: 'Payment',
+    claims: 'Claim',
+    users: 'User',
+    intakes: 'Intake',
+    treatment_plans: 'Treatment Plan',
+    documents: 'Document',
+    authorizations: 'Authorization',
+    auth: 'Auth',
+    reports: 'Report',
+    billing: 'Billing',
+}
+
+const ACTION_GROUPS = [
+    { label: 'Data Changes', options: [
+        { value: 'create', label: 'Created' },
+        { value: 'update', label: 'Updated' },
+        { value: 'delete', label: 'Deleted' },
+    ]},
+    { label: 'Clinical', options: [
+        { value: 'session_start', label: 'Session Started' },
+        { value: 'sign', label: 'Note Signed' },
+        { value: 'co_sign', label: 'Note Co-signed' },
+        { value: 'phi_access', label: 'PHI Accessed' },
+    ]},
+    { label: 'Documents', options: [
+        { value: 'document_access', label: 'Document Viewed' },
+        { value: 'document_download', label: 'Document Downloaded' },
+        { value: 'export', label: 'Data Exported' },
+    ]},
+    { label: 'Authentication', options: [
+        { value: 'login', label: 'Login' },
+        { value: 'logout', label: 'Logout' },
+        { value: 'failed_login', label: 'Failed Login' },
+        { value: 'password_change', label: 'Password Changed' },
+    ]},
+]
 
 export default function AuditLogPage() {
     const [logs, setLogs] = useState<AuditLog[]>([])
@@ -62,7 +135,6 @@ export default function AuditLogPage() {
         loadAuditLogs()
     }, [])
 
-    // Auto-refetch when filters change
     useEffect(() => {
         loadAuditLogs()
     }, [actionFilter, startDate, endDate])
@@ -85,18 +157,15 @@ export default function AuditLogPage() {
         }
     }
 
-    const handleSearch = () => {
-        loadAuditLogs()
-    }
+    const handleSearch = () => loadAuditLogs()
 
     const handleExportCSV = () => {
         const csvContent = [
-            'Timestamp,User,Action,Target,Details,IP Address',
+            'Timestamp,User,Action,Resource,Record ID,IP Address',
             ...logs.map(log =>
-                `"${log.timestamp}","${log.user_name || ''}","${log.action}","${log.table_name || ''}","${log.record_id || ''}","${log.ip_address || ''}"`
+                `"${log.timestamp}","${log.user_name || ''}","${actionLabels[log.action] || log.action}","${tableLabels[log.table_name || ''] || log.table_name || ''}","${log.record_id || ''}","${log.ip_address || ''}"`
             )
         ].join('\n')
-
         const blob = new Blob([csvContent], { type: 'text/csv' })
         const url = URL.createObjectURL(blob)
         const a = document.createElement('a')
@@ -107,14 +176,20 @@ export default function AuditLogPage() {
         toast.success('Audit log exported')
     }
 
-    const formatTimestamp = (timestamp: string) => {
-        return new Date(timestamp).toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
+    const formatTimestamp = (timestamp: string) =>
+        new Date(timestamp).toLocaleString('en-US', {
+            month: 'short', day: 'numeric', year: 'numeric',
+            hour: '2-digit', minute: '2-digit'
         })
+
+    const getDetails = (log: AuditLog): string => {
+        if (!log.changes || typeof log.changes !== 'object') return '—'
+        const c = log.changes as Record<string, unknown>
+        if (c.client_name) return String(c.client_name)
+        if (c.file_name) return String(c.file_name)
+        if (c.report) return `Report: ${c.report}`
+        if (c.email) return String(c.email)
+        return '—'
     }
 
     if (isLoading) {
@@ -130,10 +205,10 @@ export default function AuditLogPage() {
             <div className="page-header">
                 <div className="page-header-left">
                     <h1 className="page-title">
-                        <ClockCounterClockwise size={28} weight="duotone" />
+                        <Lock size={26} weight="duotone" />
                         Audit Log
                     </h1>
-                    <p className="page-subtitle">{logs.length} entries</p>
+                    <p className="page-subtitle">{logs.length} entries — HIPAA activity trail</p>
                 </div>
                 <button className="btn-secondary" onClick={handleExportCSV} disabled={logs.length === 0}>
                     <DownloadSimple size={18} weight="bold" />
@@ -147,7 +222,7 @@ export default function AuditLogPage() {
                     <input
                         type="text"
                         className="search-input"
-                        placeholder="Search audit log..."
+                        placeholder="Search by user, resource..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
@@ -156,31 +231,22 @@ export default function AuditLogPage() {
                 <select
                     className="filter-select"
                     value={actionFilter}
-                    onChange={(e) => { setActionFilter(e.target.value) }}
+                    onChange={(e) => setActionFilter(e.target.value)}
                 >
                     <option value="all">All Actions</option>
-                    <option value="create">Created</option>
-                    <option value="update">Updated</option>
-                    <option value="delete">Deleted</option>
-                    <option value="view">Viewed</option>
-                    <option value="login">Login</option>
-                    <option value="logout">Logout</option>
+                    {ACTION_GROUPS.map(group => (
+                        <optgroup key={group.label} label={group.label}>
+                            {group.options.map(o => (
+                                <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                        </optgroup>
+                    ))}
                 </select>
                 <div className="date-filter">
                     <CalendarBlank size={16} />
-                    <input
-                        type="date"
-                        className="date-input"
-                        value={startDate}
-                        onChange={(e) => setStartDate(e.target.value)}
-                    />
+                    <input type="date" className="date-input" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
                     <span>to</span>
-                    <input
-                        type="date"
-                        className="date-input"
-                        value={endDate}
-                        onChange={(e) => setEndDate(e.target.value)}
-                    />
+                    <input type="date" className="date-input" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                 </div>
                 <button className="btn-secondary btn-sm" onClick={handleSearch}>
                     <MagnifyingGlass size={16} /> Search
@@ -196,30 +262,34 @@ export default function AuditLogPage() {
                                     <th>Timestamp</th>
                                     <th>User</th>
                                     <th>Action</th>
-                                    <th>Target</th>
+                                    <th>Resource</th>
                                     <th>Details</th>
                                     <th>IP Address</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {logs.map(log => (
-                                    <tr key={log.id}>
-                                        <td className="text-muted">{formatTimestamp(log.timestamp)}</td>
+                                    <tr key={log.id} className={log.action === 'failed_login' ? 'row-danger' : ''}>
+                                        <td className="text-muted text-sm">{formatTimestamp(log.timestamp)}</td>
                                         <td>
                                             <div className="user-cell">
-                                                <User size={16} />
-                                                <span>{log.user_name || log.user_id}</span>
+                                                <User size={15} />
+                                                <span>{log.user_name || log.user_id || 'Anonymous'}</span>
                                             </div>
                                         </td>
                                         <td>
-                                            <span className={`action-badge ${actionColors[log.action] || ''}`}>
-                                                {actionIcons[log.action]}
+                                            <span className={`action-badge ${actionColors[log.action] || 'action-view'}`}>
+                                                {actionIcons[log.action] || <Eye size={13} weight="bold" />}
                                                 {actionLabels[log.action] || log.action}
                                             </span>
                                         </td>
-                                        <td>{log.table_name || '—'}</td>
-                                        <td className="audit-details">{log.record_id || '—'}</td>
-                                        <td className="text-muted font-mono">{log.ip_address || '—'}</td>
+                                        <td className="text-sm font-medium">
+                                            {tableLabels[log.table_name || ''] || log.table_name || '—'}
+                                        </td>
+                                        <td className="audit-details text-muted text-sm">
+                                            {getDetails(log)}
+                                        </td>
+                                        <td className="text-muted font-mono text-xs">{log.ip_address || '—'}</td>
                                     </tr>
                                 ))}
                             </tbody>

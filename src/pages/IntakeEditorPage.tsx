@@ -7,6 +7,7 @@ import { MentalStatusExam, RiskAssessment } from '../components/clinical'
 import SignaturePad from '../components/ui/SignaturePad'
 import { intakesApi } from '../api/intakes'
 import type { IntakeAssessment } from '../api/intakes'
+import { AddendumThread } from '../components/shared'
 import { useAuth } from '../context'
 import { getApiErrorMessage } from '../utils/errors'
 import { printIntake } from '../utils/printIntake'
@@ -125,9 +126,19 @@ export default function IntakeEditorPage() {
                 setClients(clientsRes.data.results || [])
                 const npis = npiRes.data || []
                 setOrgNpis(npis)
-                // Auto-populate NPI if not already set and we have one
-                if (npis.length > 0 && !intakeData.provider_npi) {
-                    updateField('provider_npi', npis[0].npi_number)
+                // E4 + E5: Auto-populate the rendering provider NPI when not
+                // already set. Priority order:
+                //   1) the current user's individual (Type 1) NPI — most
+                //      accurate; this is the clinician filling out the intake
+                //   2) the org's first NPI — fallback for solo practices
+                //      where each provider hasn't been assigned an NPI yet
+                if (!intakeData.provider_npi) {
+                    const userNpi = (user as { npi?: string } | null | undefined)?.npi
+                    if (userNpi) {
+                        updateField('provider_npi', userNpi)
+                    } else if (npis.length > 0) {
+                        updateField('provider_npi', npis[0].npi_number)
+                    }
                 }
             } catch {
                 // silent fail
@@ -515,6 +526,23 @@ export default function IntakeEditorPage() {
                                         ))}
                                     </div>
                                 </div>
+
+                                {/* E12: Justification narrative for the diagnosis.
+                                    Dr. Joe (2026-05-04): "would like a narrative
+                                    box to put justification for diagnosis". */}
+                                <div className="form-group" style={{ marginTop: '1rem' }}>
+                                    <label className="form-label">
+                                        Diagnosis Justification
+                                    </label>
+                                    <textarea
+                                        className="form-textarea"
+                                        rows={4}
+                                        placeholder="Describe the clinical reasoning that supports this diagnosis: presenting symptoms, duration, functional impact, and how the criteria were met. This is your narrative — not a template."
+                                        value={(intakeData.diagnosis_justification as string) || ''}
+                                        onChange={e => updateField('diagnosis_justification', e.target.value)}
+                                        disabled={isLocked}
+                                    />
+                                </div>
                             </div>
                         )}
                     </div>
@@ -553,7 +581,7 @@ export default function IntakeEditorPage() {
                         {sections.mse && (
                             <div className="intake-section-body">
                                 <MentalStatusExam
-                                    values={intakeData as Record<string, string>}
+                                    values={intakeData as Record<string, string | string[]>}
                                     onChange={updateField}
                                     disabled={isLocked}
                                 />
@@ -938,6 +966,13 @@ export default function IntakeEditorPage() {
                                 Convert to Full Treatment Plan
                             </button>
                         </div>
+                    )}
+
+                    {/* E11: addendum thread on intakes — Dr. Joe specifically
+                        asked for "a place for an addendum as you learn more
+                        info or want to change diagnosis". */}
+                    {intake && (
+                        <AddendumThread parentKind="intake" parentId={intake.id} />
                     )}
                 </div>
             </div>

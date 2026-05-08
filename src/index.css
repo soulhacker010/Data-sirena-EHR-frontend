@@ -368,6 +368,15 @@ button {
   gap: 0.375rem;
 }
 
+/* E20: title + primary action grouped on the left so the action button
+   doesn't drift off-screen on narrow monitors. */
+.page-header-title-group {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .page-title {
   display: inline-flex;
   align-items: center;
@@ -2099,6 +2108,442 @@ button {
 .form-input-basic::placeholder {
   color: var(--color-text-muted);
   font-weight: 500;
+}
+
+/* B10: signed intakes shown as overlay events on the calendar. Distinct
+   teal pill so it stands out from appointment-colored events; cursor:pointer
+   matches the click-to-open behavior. */
+.intake-event {
+  border-left-width: 4px !important;
+  border-left-style: solid !important;
+  cursor: pointer;
+}
+.intake-event .fc-event-main {
+  padding: 1px 2px;
+}
+
+/* E22: incomplete-drafts widget on the dashboard — restyled (2026-05-08) to
+   match the surrounding stat cards. White card, subtle border, neutral text.
+   No more amber callout — the count badge in the heading carries the
+   "needs attention" signal. Hidden when empty. */
+.incomplete-drafts-card {
+  margin-bottom: 1.5rem;
+  padding: 1.25rem;
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: 0.75rem;
+}
+.incomplete-drafts-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  color: var(--color-text);
+}
+.incomplete-drafts-header h3 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+.incomplete-drafts-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: var(--color-surface-2, #f1f5f9);
+  color: var(--color-text);
+  border-radius: 9999px;
+}
+.incomplete-drafts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+.incomplete-drafts-item { display: block; }
+.incomplete-drafts-link {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 2fr 1fr 1fr;
+  gap: 0.75rem;
+  align-items: center;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.825rem;
+}
+.incomplete-drafts-link:hover {
+  background: var(--color-surface-2, #f8fafc);
+  border-color: var(--color-border);
+}
+.incomplete-drafts-kind {
+  font-weight: 600;
+  color: var(--color-text-secondary);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.incomplete-drafts-client {
+  font-weight: 500;
+  color: var(--color-text);
+}
+.incomplete-drafts-status {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  color: var(--color-text-secondary);
+  font-weight: 600;
+}
+.incomplete-drafts-time {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+  text-align: right;
+}
+
+/* E31 Half A: pill-style radio row for picking appointment type
+   (Client Session vs Staff Meeting / Personal Block / Training / Other). */
+.event-type-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+.event-type-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 9999px;
+  cursor: pointer;
+  font-size: 0.825rem;
+  user-select: none;
+  background: var(--color-surface-1, #fff);
+}
+.event-type-option:hover { border-color: var(--color-primary, #0d9488); }
+.event-type-option.active {
+  background: rgba(13, 148, 136, 0.08);
+  border-color: var(--color-primary, #0d9488);
+  color: var(--color-primary, #0d9488);
+  font-weight: 600;
+}
+.event-type-option input { margin: 0; accent-color: var(--color-primary, #0d9488); }
+
+/* E21: service-category badges shown on client list rows + client detail
+   header. Colors come from `SERVICE_CATEGORY_OPTIONS` inline styles; this
+   class only handles size, spacing, and the row layout. */
+.service-category-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  align-items: center;
+}
+.service-category-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Picker grid used inside Add/Edit Client modals — checkbox + label per
+   category. Three columns on wide modals, single on mobile. */
+.service-category-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+  gap: 0.5rem;
+}
+.service-category-pick {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.625rem;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 0.5rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  user-select: none;
+}
+.service-category-pick input { margin: 0; }
+.service-category-pick:hover { border-color: var(--color-primary, #0d9488); }
+.service-category-pick.checked {
+  border-color: var(--color-primary, #0d9488);
+  background: rgba(13, 148, 136, 0.05);
+}
+
+/* MultiSelectField (E7 + E8) — chips + dropdown + free-text combobox used
+   for MSE fields and any future clinical multi-select. */
+.multiselect-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+.multiselect-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+.multiselect-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.78rem;
+  background: var(--color-surface-2, #f1f5f9);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 9999px;
+  max-width: 100%;
+}
+.multiselect-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 18rem;
+}
+.multiselect-chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 9999px;
+  color: var(--color-text-muted, #64748b);
+  cursor: pointer;
+}
+.multiselect-chip-remove:hover {
+  background: var(--color-error-light, #fee2e2);
+  color: var(--color-error, #dc2626);
+}
+.multiselect-controls {
+  display: grid;
+  grid-template-columns: 1fr 1.2fr;
+  gap: 0.375rem;
+  align-items: stretch;
+}
+.multiselect-custom {
+  display: flex;
+  gap: 0.25rem;
+}
+.multiselect-custom input { flex: 1; min-width: 0; }
+.multiselect-add-btn {
+  flex-shrink: 0;
+  padding: 0.25rem 0.5rem;
+}
+
+/* ContactNotesTab — non-billable client contact log (E19) shown on
+   ClientDetailPage's Contacts tab. */
+.contact-notes-tab { display: flex; flex-direction: column; gap: 1rem; }
+.contact-notes-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.contact-notes-header .card-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.contact-form { padding: 1rem; }
+.contact-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.contact-item {
+  padding: 0.75rem 1rem;
+  background: var(--color-surface-1, #ffffff);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 0.5rem;
+}
+.contact-item-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--color-text-muted, #64748b);
+  margin-bottom: 0.375rem;
+  flex-wrap: wrap;
+}
+.contact-item-type {
+  font-weight: 600;
+  color: var(--color-text, #0f172a);
+  background: var(--color-surface-2, #f1f5f9);
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+}
+.contact-item-sep { opacity: 0.5; }
+.contact-item-author { font-weight: 500; }
+.contact-item-duration { font-style: italic; }
+.contact-item-delete {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--color-text-muted, #94a3b8);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 0.25rem;
+}
+.contact-item-delete:hover { color: var(--color-danger, #dc2626); background: rgba(220, 38, 38, 0.06); }
+.contact-item-summary {
+  margin: 0;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
+/* AddendumThread — chronological list of immutable amendments shown under
+   any signed clinical document (notes, intakes, treatment plans). */
+.addendum-thread {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 0.5rem;
+  background: var(--color-surface-1, #ffffff);
+}
+.addendum-thread-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+.addendum-thread-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.addendum-thread-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.375rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: var(--color-primary, #0d9488);
+  color: #fff;
+  border-radius: 9999px;
+}
+.addendum-thread-empty {
+  font-size: 0.8rem;
+  color: var(--color-text-muted, #64748b);
+  margin: 0 0 0.75rem 0;
+}
+.addendum-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 0.75rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.addendum-item {
+  padding: 0.625rem 0.75rem;
+  border-left: 3px solid var(--color-primary, #0d9488);
+  background: var(--color-surface-2, #f8fafc);
+  border-radius: 0.25rem;
+}
+.addendum-item-meta {
+  display: flex;
+  gap: 0.375rem;
+  align-items: center;
+  font-size: 0.7rem;
+  color: var(--color-text-muted, #64748b);
+  margin-bottom: 0.25rem;
+}
+.addendum-item-author { font-weight: 600; }
+.addendum-item-sep { opacity: 0.5; }
+.addendum-item-body {
+  margin: 0;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+.addendum-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: transparent;
+  color: var(--color-primary, #0d9488);
+  border: 1px dashed var(--color-primary, #0d9488);
+  border-radius: 0.375rem;
+  cursor: pointer;
+}
+.addendum-add-btn:hover { background: rgba(13, 148, 136, 0.06); }
+.addendum-form { display: flex; flex-direction: column; gap: 0.5rem; }
+.addendum-form-textarea { resize: vertical; }
+.addendum-form-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+/* Diagnosis chips — read-only pills shown on session note sidebar (E16). */
+.diagnosis-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+.diagnosis-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--color-surface-2, #f1f5f9);
+  color: var(--color-text, #0f172a);
+  border: 1px solid var(--color-border, #e2e8f0);
+  border-radius: 9999px;
+}
+
+/* DateOfBirthInput — three-field MM/DD/YYYY entry. Replaces native date input
+   for DOB so distant past years (1966 etc.) can be entered reliably. */
+.dob-input-row {
+  display: grid;
+  grid-template-columns: 1.4fr 0.9fr 1.1fr;
+  gap: 0.5rem;
+  align-items: end;
+}
+.dob-field {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.dob-sublabel {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  margin-bottom: 0.25rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.dob-field .form-input-basic {
+  width: 100%;
 }
 
 /* Date Input Specific Styling - Ensure Calendar Picker Works */
@@ -5808,6 +6253,41 @@ input[type="date"] {
   color: #a855f7;
 }
 
+.action-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.action-sign {
+  background: rgba(13, 148, 136, 0.1);
+  color: #0d9488;
+}
+
+.action-session {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+}
+
+.action-phi {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.action-download {
+  background: rgba(59, 130, 246, 0.1);
+  color: #2563eb;
+}
+
+.action-export {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+}
+
+.row-danger td {
+  background: rgba(254, 242, 242, 0.6);
+}
+
 .page-title-icon {
   vertical-align: middle;
   margin-right: 0.5rem;
@@ -6207,6 +6687,10 @@ input[type="date"] {
   gap: 1rem;
 }
 
+/* E10: Risk Assessment stoplight palette per Dr. Joe's spec —
+   GREEN = no risk, YELLOW = Low, RED = Moderate / High / Imminent.
+   Imminent keeps the pulse animation so it still reads as "highest" within
+   the red bucket without needing its own color. */
 .risk-badge {
   font-size: 0.75rem;
   font-weight: 600;
@@ -6216,24 +6700,22 @@ input[type="date"] {
   color: var(--color-error, #dc2626);
 }
 
-.risk-badge.risk-low {
-  background: #dcfce7;
+.risk-badge.risk-none {
+  background: #dcfce7;  /* green */
   color: #15803d;
 }
 
-.risk-badge.risk-moderate {
-  background: #fef9c3;
-  color: #b45309;
+.risk-badge.risk-low {
+  background: #fef9c3;  /* yellow */
+  color: #854d0e;
 }
 
-.risk-badge.risk-high {
-  background: #ffedd5;
-  color: #c2410c;
+.risk-badge.risk-elevated {
+  background: #fee2e2;  /* red — covers Moderate, High, Imminent */
+  color: #dc2626;
 }
 
 .risk-badge.risk-imminent {
-  background: #fee2e2;
-  color: #dc2626;
   animation: riskPulse 1.5s ease-in-out infinite;
 }
 
@@ -6242,10 +6724,9 @@ input[type="date"] {
   50% { opacity: 0.6; }
 }
 
-.risk-select-low { border-left: 3px solid #15803d !important; }
-.risk-select-moderate { border-left: 3px solid #b45309 !important; }
-.risk-select-high { border-left: 3px solid #c2410c !important; }
-.risk-select-imminent {
+.risk-select-none     { border-left: 3px solid #15803d !important; }
+.risk-select-low      { border-left: 3px solid #ca8a04 !important; }
+.risk-select-elevated {
   border-left: 3px solid #dc2626 !important;
   background-color: #fff5f5 !important;
 }
@@ -8008,6 +8489,135 @@ tr.overdue-critical {
   color: var(--color-text-muted);
 }
 
+/* Payer Search Component */
+.payer-search-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.payer-search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.payer-search-icon {
+  position: absolute;
+  left: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.payer-search-input {
+  width: 100%;
+  padding: 0.625rem 0.75rem 0.625rem 2.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  background: white;
+  transition: border-color 0.2s;
+}
+
+.payer-search-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+.payer-search-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 100;
+  max-height: 280px;
+  overflow-y: auto;
+  margin-top: 0.25rem;
+}
+
+.payer-search-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.payer-search-option:hover,
+.payer-search-option.highlighted {
+  background: var(--color-bg-alt);
+}
+
+.payer-search-option-icon,
+.payer-search-selected-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--color-primary), #0f766e);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.payer-search-option-info,
+.payer-search-selected-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.payer-search-option-name,
+.payer-search-selected-name {
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.payer-search-option-details,
+.payer-search-selected-details {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
+.payer-search-selected {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+}
+
+.payer-search-clear {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+}
+
+.payer-search-clear:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--color-text);
+}
+
+.payer-search-no-results {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  color: var(--color-text-muted);
+}
+
 /* Provider Select Component */
 .provider-select-wrapper,
 .location-select-wrapper {
@@ -9009,4 +9619,83 @@ select.input-error {
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 4px 24px rgba(99, 102, 241, 0.1);
+}
+
+/* Claim payer cell + unrecognized badge */
+.payer-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+}
+
+.badge-warning-sm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #92400e;
+  background: rgba(245, 158, 11, 0.15);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.claim-payer-filter {
+  min-width: 240px;
+  flex: 1;
+  max-width: 320px;
+}
+
+/* Claim validation panel */
+.validation-panel {
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0;
+  border: 1px solid transparent;
+  font-size: 0.85rem;
+}
+
+.validation-panel.validation-error {
+  background: rgba(239, 68, 68, 0.06);
+  border-color: rgba(239, 68, 68, 0.25);
+  color: #991b1b;
+}
+
+.validation-panel.validation-ok {
+  background: rgba(16, 185, 129, 0.06);
+  border-color: rgba(16, 185, 129, 0.25);
+  color: #065f46;
+}
+
+.validation-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  margin-bottom: 0.4rem;
+}
+
+.validation-panel-subheader {
+  font-weight: 600;
+  margin-top: 0.6rem;
+  margin-bottom: 0.25rem;
+  color: #92400e;
+  font-size: 0.8rem;
+}
+
+.validation-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+
+.validation-list li {
+  margin: 0.15rem 0;
+  line-height: 1.4;
+}
+
+.validation-warnings {
+  color: #92400e;
 }

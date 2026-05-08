@@ -12,7 +12,8 @@ import {
     PencilSimple,
     UserCirclePlus,
     CheckCircle,
-    XCircle
+    XCircle,
+    EnvelopeSimple,
 } from '@phosphor-icons/react'
 
 const roleLabels: Record<string, string> = {
@@ -42,14 +43,18 @@ export default function UsersPage() {
     const [editingUser, setEditingUser] = useState<User | null>(null)
     const [isLoading, setIsLoading] = useState(true)
 
-    // Form state
+    // Form state. `licenses` is comma-separated in the UI but stored as a
+    // string array on the backend; we split on save and join on load.
     const [formData, setFormData] = useState({
         firstName: '',
         lastName: '',
         email: '',
         phone: '',
         role: 'clinician',
-        password: ''
+        password: '',
+        credentials: '',
+        licenses: '',
+        npi: '',
     })
     const [formErrors, setFormErrors] = useState<Record<string, string>>({})
     const [isSaving, setIsSaving] = useState(false)
@@ -120,6 +125,12 @@ export default function UsersPage() {
         }
 
         setIsSaving(true)
+        // Comma-separated UI → backend string array. Trim each entry, drop
+        // blanks, so " NJ-12345 ,   NY-67890 " becomes ['NJ-12345','NY-67890'].
+        const parsedLicenses = formData.licenses
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
         try {
             await usersApi.create({
                 first_name: formData.firstName,
@@ -129,6 +140,9 @@ export default function UsersPage() {
                 password: formData.password,
                 organization_id: user.organization_id,
                 phone: formData.phone || undefined,
+                credentials: formData.credentials || undefined,
+                licenses: parsedLicenses.length ? parsedLicenses : undefined,
+                npi: formData.npi.trim() || undefined,
             })
             toast.success(`${formData.firstName} ${formData.lastName} has been added`)
             setIsAddModalOpen(false)
@@ -146,12 +160,20 @@ export default function UsersPage() {
         if (!validateForm() || !editingUser) return
 
         setIsSaving(true)
+        const parsedLicenses = formData.licenses
+            .split(',')
+            .map(s => s.trim())
+            .filter(Boolean)
         try {
             await usersApi.update(editingUser.id, {
                 first_name: formData.firstName,
                 last_name: formData.lastName,
+                email: formData.email,
                 role: formData.role,
                 phone: formData.phone || undefined,
+                credentials: formData.credentials,
+                licenses: parsedLicenses,
+                npi: formData.npi.trim(),
             })
             toast.success(`${formData.firstName} ${formData.lastName} has been updated`)
             setIsEditModalOpen(false)
@@ -179,6 +201,30 @@ export default function UsersPage() {
         }
     }
 
+    /**
+     * B12: Admin-initiated password reset. Sends the reset email to the
+     * user's address — the link they receive is the same one that comes
+     * from /forgot-password, so the staff member doesn't need to navigate
+     * there themselves. Inactive users and users without an email are
+     * rejected by the backend with a clean 400.
+     */
+    const handleSendResetLink = async (user: User) => {
+        if (isSaving) return
+        if (!user.is_active) {
+            toast.error('Reactivate the user before sending a reset link.')
+            return
+        }
+        setIsSaving(true)
+        try {
+            const result = await usersApi.sendResetLink(user.id)
+            toast.success(result.detail || `Reset link sent to ${user.email}`)
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Failed to send reset link'))
+        } finally {
+            setIsSaving(false)
+        }
+    }
+
     const openEditModal = (user: User) => {
         setEditingUser(user)
         setFormData({
@@ -187,7 +233,10 @@ export default function UsersPage() {
             email: user.email,
             phone: user.phone || '',
             role: user.role,
-            password: ''
+            password: '',
+            credentials: user.credentials || '',
+            licenses: (user.licenses || []).join(', '),
+            npi: user.npi || '',
         })
         setFormErrors({})
         setIsEditModalOpen(true)
@@ -200,7 +249,10 @@ export default function UsersPage() {
             email: '',
             phone: '',
             role: 'clinician',
-            password: ''
+            password: '',
+            credentials: '',
+            licenses: '',
+            npi: '',
         })
         setFormErrors({})
     }
@@ -327,6 +379,14 @@ export default function UsersPage() {
                                                     <PencilSimple size={16} />
                                                 </button>
                                                 <button
+                                                    className="btn-icon-sm"
+                                                    title="Send password reset link"
+                                                    onClick={() => handleSendResetLink(user)}
+                                                    disabled={!user.is_active || isSaving}
+                                                >
+                                                    <EnvelopeSimple size={16} />
+                                                </button>
+                                                <button
                                                     className={`btn-icon-sm ${user.is_active ? 'danger' : 'success'}`}
                                                     title={user.is_active ? 'Deactivate' : 'Activate'}
                                                     onClick={() => handleDeactivate(user)}
@@ -427,6 +487,42 @@ export default function UsersPage() {
                         />
                         {formErrors.password && <p className="form-error">{formErrors.password}</p>}
                     </div>
+                    <div className="form-group">
+                        <label className="form-label">Credentials</label>
+                        <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g. PsyD, ABPP"
+                            value={formData.credentials}
+                            onChange={(e) => handleFieldChange('credentials', e.target.value)}
+                        />
+                        <p className="form-hint">Academic / professional credentials shown next to the provider's name.</p>
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Licenses</label>
+                        <input
+                            type="text"
+                            className="form-input"
+                            placeholder="NJ-12345, NY-67890"
+                            value={formData.licenses}
+                            onChange={(e) => handleFieldChange('licenses', e.target.value)}
+                        />
+                        <p className="form-hint">State license numbers. Separate multiple with commas.</p>
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Individual NPI</label>
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="\d{10}"
+                            maxLength={10}
+                            className="form-input"
+                            placeholder="10-digit NPI (e.g., 1659841096)"
+                            value={formData.npi}
+                            onChange={(e) => handleFieldChange('npi', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        />
+                        <p className="form-hint">Type 1 (individual) NPI used as the rendering provider on claims. Leave blank for non-clinical staff. Validated against the CMS Luhn check on save.</p>
+                    </div>
                     <div className="form-actions">
                         <button className="btn-secondary" onClick={() => { setIsAddModalOpen(false); resetForm() }}>Cancel</button>
                         <button className="btn-primary" onClick={handleAddUser}>
@@ -471,11 +567,18 @@ export default function UsersPage() {
                         <label className="form-label">Email</label>
                         <input
                             type="email"
-                            className="form-input"
+                            name="email"
+                            className={`form-input${formErrors.email ? ' input-error' : ''}`}
                             value={formData.email}
-                            disabled
+                            onChange={(e) => {
+                                setFormData(prev => ({ ...prev, email: e.target.value }))
+                                if (formErrors.email) {
+                                    setFormErrors(prev => ({ ...prev, email: '' }))
+                                }
+                            }}
                         />
-                        <p className="form-hint">Email cannot be changed</p>
+                        {formErrors.email && <p className="form-error">{formErrors.email}</p>}
+                        <p className="form-hint">User signs in with this address. Changing it will require them to use the new one next time.</p>
                     </div>
                     <div className="form-group">
                         <label className="form-label">Phone</label>
@@ -500,6 +603,27 @@ export default function UsersPage() {
                             <option value="biller">Biller</option>
                             <option value="front_desk">Front Desk</option>
                         </select>
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Credentials</label>
+                        <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g. PsyD, ABPP"
+                            value={formData.credentials}
+                            onChange={(e) => handleFieldChange('credentials', e.target.value)}
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Licenses</label>
+                        <input
+                            type="text"
+                            className="form-input"
+                            placeholder="NJ-12345, NY-67890"
+                            value={formData.licenses}
+                            onChange={(e) => handleFieldChange('licenses', e.target.value)}
+                        />
+                        <p className="form-hint">Comma-separated state license numbers.</p>
                     </div>
                     <div className="form-actions">
                         <button className="btn-secondary" onClick={() => { setIsEditModalOpen(false); setEditingUser(null); resetForm() }}>Cancel</button>

@@ -4,6 +4,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { PageSkeleton } from '../components/ui'
 import { appointmentsApi, clientsApi, lookupsApi, billingApi, getApiErrorMessage } from '../api'
+import { intakesApi, type IntakeListItem } from '../api/intakes'
 import type { CPTSuggestion } from '../api/billing'
 import { useAuth } from '../context'
 import FullCalendar from '@fullcalendar/react'
@@ -57,6 +58,11 @@ const getServiceColor = (serviceCode?: string): string => {
 
 // Combined color: service type base color + status-based style
 const getEventColor = (apt: Appointment): { bg: string; border: string; opacity: number } => {
+    // E31 Half A: non-client events render gray so they read as "blocks" rather
+    // than billable sessions. Distinct enough that providers don't confuse them.
+    if (apt.event_type && apt.event_type !== 'client_session') {
+        return { bg: '#64748B', border: '#475569', opacity: 0.92 }
+    }
     const base = getServiceColor(apt.service_code)
     switch (apt.status) {
         case 'cancelled': return { bg: '#E5E7EB', border: '#9CA3AF', opacity: 0.5 }
@@ -69,6 +75,10 @@ const getEventColor = (apt: Appointment): { bg: string; border: string; opacity:
 
 // Helper: get the client full name from an appointment
 function aptClientName(apt: Appointment): string {
+    // E31 Half A: non-session events have no client; render the title
+    // (e.g. "Q3 Directors Meeting") in its place. Client sessions keep the
+    // first-name + last-name format.
+    if (!apt.client) return apt.title || 'Untitled event'
     return `${apt.client.first_name} ${apt.client.last_name}`
 }
 
@@ -84,6 +94,11 @@ export default function CalendarPage() {
     const calendarRef = useRef<FullCalendar>(null)
     const [isLoading, setIsLoading] = useState(true)
     const [appointments, setAppointments] = useState<Appointment[]>([])
+    // B10: signed/co-signed intakes for the visible window — overlaid on the
+    // calendar so providers can see "intake done on this day" without leaving
+    // the calendar. Only signed/co-signed are shown to avoid clutter from
+    // in-progress drafts.
+    const [intakes, setIntakes] = useState<IntakeListItem[]>([])
     const [clientsList, setClientsList] = useState<Client[]>([])
     const [providersList, setProvidersList] = useState<User[]>([])
     const [currentView, setCurrentView] = useState<'dayGridMonth' | 'timeGridWeek' | 'timeGridDay'>('timeGridWeek')
@@ -124,7 +139,13 @@ export default function CalendarPage() {
         isRecurring: false,
         recurringPattern: 'weekly' as 'daily' | 'weekly' | 'biweekly' | 'monthly',
         recurringEndDate: '',
-        isTelehealth: false
+        isTelehealth: false,
+        // E31 Half A: appointment kind. 'client_session' = a billable client visit
+        // (the default and what the rest of the form is built around);
+        // anything else turns this into a calendar block — no client, no CPT,
+        // no invoice, just a title rendered on the calendar.
+        eventType: 'client_session' as 'client_session' | 'staff_meeting' | 'personal_block' | 'training' | 'other',
+        title: '',
     })
 
     // Get date range from calendar view for fetching
@@ -165,6 +186,31 @@ export default function CalendarPage() {
         }
     }, [getDateRange, providerFilter, serviceFilter, statusFilter])
 
+    // B10: Fetch intakes within the visible window so signed assessments
+    // appear on the calendar alongside appointments. We only render
+    // signed/co_signed intakes (drafts would be visual noise — those are
+    // tracked separately in the "Intakes" page).
+    const fetchIntakes = useCallback(async () => {
+        try {
+            const range = getDateRange()
+            const params: Parameters<typeof intakesApi.getAll>[0] = {
+                start_date: range.start_date,
+                end_date: range.end_date,
+            }
+            if (providerFilter) params.provider = providerFilter
+            const data = await intakesApi.getAll(params)
+            // Filter to terminal states client-side — backend supports only
+            // a single `status` exact-match filter, but we want both signed
+            // and co_signed.
+            const visibleStatuses = new Set(['signed', 'co_signed'])
+            setIntakes(data.results.filter(i => visibleStatuses.has(i.status)))
+        } catch {
+            // Silent failure — intakes overlay is non-essential to the
+            // appointment-centric calendar view.
+            setIntakes([])
+        }
+    }, [getDateRange, providerFilter])
+
     // Initial data load
     useEffect(() => {
         const loadData = async () => {
@@ -202,8 +248,9 @@ export default function CalendarPage() {
     useEffect(() => {
         if (!isLoading) {
             fetchAppointments()
+            fetchIntakes()
         }
-    }, [fetchAppointments, isLoading])
+    }, [fetchAppointments, fetchIntakes, isLoading])
 
     // Check for client preselection from URL
     useEffect(() => {
@@ -309,7 +356,7 @@ export default function CalendarPage() {
     }, [formData.isTelehealth])
 
     // Convert appointments to FullCalendar events (5.1 color coding)
-    const calendarEvents = appointments.map(apt => {
+    const appointmentEvents = appointments.map(apt => {
         const colors = getEventColor(apt)
         return {
             id: apt.id,
@@ -320,14 +367,49 @@ export default function CalendarPage() {
             borderColor: colors.border,
             textColor: apt.status === 'cancelled' ? '#6B7280' : '#fff',
             classNames: apt.status === 'cancelled' ? ['event-cancelled'] : [],
-            extendedProps: apt,
+            extendedProps: { __kind: 'appointment' as const, ...apt },
         }
     })
+
+    // B10: Add intakes as all-day calendar events. They land on
+    // assessment_date so providers see "intake completed" in context.
+    // Distinct teal color and an `intake-event` class let CSS / event renderer
+    // draw them differently from appointments.
+    const intakeEvents = intakes.map(intake => ({
+        id: `intake-${intake.id}`,
+        title: `Intake — ${intake.client_name}`,
+        start: intake.assessment_date,  // date-only ISO string → all-day event
+        allDay: true,
+        backgroundColor: '#0D9488',
+        borderColor: '#0F766E',
+        textColor: '#fff',
+        classNames: ['intake-event'],
+        extendedProps: { __kind: 'intake' as const, intake },
+    }))
+
+    const calendarEvents = [...appointmentEvents, ...intakeEvents]
 
     // Compact event renderer — stays readable even when columns are narrow
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const renderEventContent = (eventInfo: any) => {
-        const apt = eventInfo.event.extendedProps as Appointment
+        const props = eventInfo.event.extendedProps as { __kind?: 'appointment' | 'intake' } & Record<string, unknown>
+
+        // B10: render intakes with a distinct, condensed pill (no time row).
+        if (props.__kind === 'intake') {
+            const intake = props.intake as IntakeListItem
+            return (
+                <div style={{ padding: '2px 4px', overflow: 'hidden', lineHeight: 1.3 }}>
+                    <div style={{ fontSize: '0.62rem', opacity: 0.85, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                        Intake · {intake.status === 'co_signed' ? 'Co-signed' : 'Signed'}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {intake.client_name}
+                    </div>
+                </div>
+            )
+        }
+
+        const apt = props as unknown as Appointment
         const start = new Date(apt.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
         const isCancelled = apt.status === 'cancelled'
         return (
@@ -383,9 +465,12 @@ export default function CalendarPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleDateSelect = (selectInfo: any) => {
         setIsEditMode(false)
+        const defaultProviderId = user?.id && providersList.some(p => p.id === user.id)
+            ? user.id
+            : (providersList.length === 1 ? providersList[0].id : '')
         setFormData({
             clientId: '',
-            providerId: '',
+            providerId: defaultProviderId,
             serviceCode: '97153',
             modifiers: '',
             placeOfService: '11',
@@ -402,10 +487,17 @@ export default function CalendarPage() {
         setIsScheduleModalOpen(true)
     }
 
-    // Handle event click (view appointment)
+    // Handle event click (view appointment, or jump to the intake editor for
+    // intake events overlaid via B10).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleEventClick = (clickInfo: any) => {
-        const apt = clickInfo.event.extendedProps as Appointment
+        const props = clickInfo.event.extendedProps as { __kind?: 'appointment' | 'intake' } & Record<string, unknown>
+        if (props.__kind === 'intake') {
+            const intake = props.intake as IntakeListItem
+            navigate(`/intakes/${intake.id}`)
+            return
+        }
+        const apt = props as unknown as Appointment
         setSelectedAppointment(apt)
         setIsViewModalOpen(true)
     }
@@ -414,7 +506,16 @@ export default function CalendarPage() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleEventDrop = async (dropInfo: any) => {
         const event = dropInfo.event
-        const apt = event.extendedProps as Appointment
+        const props = event.extendedProps as { __kind?: 'appointment' | 'intake' } & Record<string, unknown>
+
+        // B10: intakes are date-bound, read-only-on-calendar overlays. Don't
+        // attempt to mutate the intake's assessment_date by dragging.
+        if (props.__kind === 'intake') {
+            dropInfo.revert()
+            return
+        }
+
+        const apt = props as unknown as Appointment
 
         if (apt.status !== 'scheduled') {
             dropInfo.revert()
@@ -422,9 +523,15 @@ export default function CalendarPage() {
         }
 
         try {
+            // FullCalendar with `timeZone="local"` (default) returns naive ISO
+            // strings via `event.startStr` ("2026-04-13T13:00:00", no offset).
+            // Sending those would cause the same drift bug as the form path:
+            // Django interprets them as UTC, so each drag would push the
+            // appointment back by one local-UTC offset. Use the Date objects
+            // (which ARE timezone-aware) and emit proper UTC ISO instead.
             await appointmentsApi.update(apt.id, {
-                start_time: event.startStr,
-                end_time: event.endStr,
+                start_time: event.start ? event.start.toISOString() : event.startStr,
+                end_time: event.end ? event.end.toISOString() : event.endStr,
             })
             toast.success('Appointment rescheduled')
             fetchAppointments()
@@ -438,9 +545,15 @@ export default function CalendarPage() {
     const handleAddClick = () => {
         setIsEditMode(false)
         const now = new Date()
+        // Default provider to the logged-in user when they're on the providers
+        // list (clinicians will be — admins may not). E3 from feedback tracker:
+        // "Provider can it be automatically set to the user logged in?"
+        const defaultProviderId = user?.id && providersList.some(p => p.id === user.id)
+            ? user.id
+            : (providersList.length === 1 ? providersList[0].id : '')
         setFormData({
             clientId: '',
-            providerId: '',
+            providerId: defaultProviderId,
             serviceCode: '97153',
             modifiers: '',
             placeOfService: '11',
@@ -601,8 +714,14 @@ export default function CalendarPage() {
         if (isSaving) return
 
         // Frontend validation
-        if (!formData.clientId) {
+        // E31 Half A: client required for client_session, title required for everything else.
+        const isClientSession = formData.eventType === 'client_session'
+        if (isClientSession && !formData.clientId) {
             toast.error('Please select a client')
+            return
+        }
+        if (!isClientSession && !formData.title.trim()) {
+            toast.error('Please enter a title for this event')
             return
         }
         if (!formData.providerId) {
@@ -618,11 +737,23 @@ export default function CalendarPage() {
             return
         }
 
-        const payload: CreateAppointmentPayload = {
+        // Build local Date objects, then convert to proper UTC ISO via toISOString().
+        // CRITICAL: do NOT send `${date}T${time}:00` — that's a naive datetime
+        // (no timezone) which Django interprets as UTC, shifting every saved
+        // appointment by the local UTC offset (e.g. 1pm ET → stored 1pm UTC →
+        // shown 9am ET). Re-saves stack the shift (1pm → 9am → 5am).
+        const localStart = new Date(`${formData.date}T${formData.startTime}:00`)
+        const localEnd = new Date(`${formData.date}T${formData.endTime}:00`)
+        if (isNaN(localStart.getTime()) || isNaN(localEnd.getTime())) {
+            toast.error('Invalid date or time')
+            return
+        }
+
+        const payload: CreateAppointmentPayload = isClientSession ? {
             client_id: formData.clientId,
             provider_id: formData.providerId,
-            start_time: `${formData.date}T${formData.startTime}:00`,
-            end_time: `${formData.date}T${formData.endTime}:00`,
+            start_time: localStart.toISOString(),
+            end_time: localEnd.toISOString(),
             service_code: formData.serviceCode,
             modifiers: formData.modifiers,
             place_of_service: formData.placeOfService,
@@ -633,6 +764,22 @@ export default function CalendarPage() {
                 frequency: formData.recurringPattern,
                 end_date: formData.recurringEndDate || undefined,
             } : undefined,
+            event_type: 'client_session',
+        } : {
+            // E31 Half A: non-session events skip CPT, units, modifiers, etc.
+            // The backend validator rejects client_id on these and requires
+            // title; we mirror that on the FE to avoid a round-trip.
+            provider_id: formData.providerId,
+            start_time: localStart.toISOString(),
+            end_time: localEnd.toISOString(),
+            notes: formData.notes,
+            is_recurring: formData.isRecurring,
+            recurrence_pattern: formData.isRecurring ? {
+                frequency: formData.recurringPattern,
+                end_date: formData.recurringEndDate || undefined,
+            } : undefined,
+            event_type: formData.eventType,
+            title: formData.title.trim(),
         }
 
         setIsSaving(true)
@@ -654,16 +801,21 @@ export default function CalendarPage() {
         }
     }
 
-    // Handle start session (navigate to notes)
+    // Handle start session — navigate STRAIGHT to the note editor with the
+    // appointment ID. Editor (E24) handles the "find-or-create" flow: if a
+    // note already exists for this appointment, it redirects to it. So one
+    // button works whether the provider is starting fresh or returning to a
+    // draft.
     const handleStartSession = () => {
         if (!selectedAppointment) return
-        navigate(`/notes?appointment=${selectedAppointment.id}`)
+        navigate(`/notes/new?appointment=${selectedAppointment.id}`)
     }
 
-    // Handle view notes
+    // Handle view notes — same target as Start Session; the editor knows
+    // whether to show a fresh note or the existing one for this appointment.
     const handleViewNotes = () => {
         if (!selectedAppointment) return
-        navigate(`/notes?appointment=${selectedAppointment.id}`)
+        navigate(`/notes/new?appointment=${selectedAppointment.id}`)
     }
 
     if (isLoading) {
@@ -852,21 +1004,69 @@ export default function CalendarPage() {
                 size="lg"
             >
                 <form onSubmit={handleScheduleSubmit} className="schedule-form">
-                    <div className="form-row-2">
-                        <div className="form-group">
-                            <label className="form-label">Client *</label>
-                            <select
-                                value={formData.clientId}
-                                onChange={(e) => setFormData(prev => ({ ...prev, clientId: e.target.value }))}
-                                className="form-input-basic"
-                                required
-                            >
-                                <option value="">Select client</option>
-                                {clientsList.map(c => (
-                                    <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
-                                ))}
-                            </select>
+                    {/* E31 Half A: event type picker. Switching to a non-session
+                        type hides client/CPT inputs and reveals a Title field
+                        below. The provider stays required either way (it's
+                        whose calendar gets the block). */}
+                    <div className="form-group">
+                        <label className="form-label">Type</label>
+                        <div className="event-type-picker">
+                            {[
+                                { value: 'client_session', label: 'Client Session' },
+                                { value: 'staff_meeting', label: 'Staff Meeting' },
+                                { value: 'personal_block', label: 'Personal Block' },
+                                { value: 'training', label: 'Training / CEU' },
+                                { value: 'other', label: 'Other' },
+                            ].map(opt => (
+                                <label
+                                    key={opt.value}
+                                    className={`event-type-option${formData.eventType === opt.value ? ' active' : ''}`}
+                                >
+                                    <input
+                                        type="radio"
+                                        name="event_type"
+                                        value={opt.value}
+                                        checked={formData.eventType === opt.value}
+                                        onChange={() => setFormData(prev => ({
+                                            ...prev,
+                                            eventType: opt.value as typeof prev.eventType,
+                                        }))}
+                                    />
+                                    <span>{opt.label}</span>
+                                </label>
+                            ))}
                         </div>
+                    </div>
+
+                    <div className="form-row-2">
+                        {formData.eventType === 'client_session' ? (
+                            <div className="form-group">
+                                <label className="form-label">Client *</label>
+                                <select
+                                    value={formData.clientId}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, clientId: e.target.value }))}
+                                    className="form-input-basic"
+                                    required
+                                >
+                                    <option value="">Select client</option>
+                                    {clientsList.map(c => (
+                                        <option key={c.id} value={c.id}>{c.first_name} {c.last_name}</option>
+                                    ))}
+                                </select>
+                            </div>
+                        ) : (
+                            <div className="form-group">
+                                <label className="form-label">Title *</label>
+                                <input
+                                    type="text"
+                                    value={formData.title}
+                                    onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
+                                    className="form-input-basic"
+                                    placeholder="e.g. Q3 Directors Meeting"
+                                    required
+                                />
+                            </div>
+                        )}
 
                         <div className="form-group">
                             <label className="form-label">Provider *</label>

@@ -6,6 +6,7 @@ import { DashboardLayout } from '../components/layout'
 import { PageSkeleton, EmptyState } from '../components/ui'
 import { reportsApi } from '../api'
 import type { MissingNotesReport } from '../api/reports'
+import { formatDateSafe } from '../utils/dates'
 import {
     ArrowLeft,
     Download,
@@ -16,8 +17,7 @@ import {
     User
 } from '@phosphor-icons/react'
 
-const formatDate = (date: string) =>
-    new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+const formatDate = (date: string) => formatDateSafe(date)
 
 export default function MissingNotesReportPage() {
     const navigate = useNavigate()

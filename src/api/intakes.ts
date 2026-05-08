@@ -46,6 +46,10 @@ export interface IntakeFilters {
     provider?: string
     status?: string
     page?: number
+    /** ISO date YYYY-MM-DD; filters by IntakeAssessment.assessment_date >= start_date */
+    start_date?: string
+    /** ISO date YYYY-MM-DD; filters by IntakeAssessment.assessment_date <= end_date */
+    end_date?: string
 }
 
 export const intakesApi = {

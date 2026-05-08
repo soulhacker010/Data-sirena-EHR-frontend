@@ -16,6 +16,10 @@ function val(data: Record<string, unknown>, key: string): string {
     const v = data[key]
     if (!v) return ''
     if (typeof v === 'string') return v
+    // E7+E8: MSE fields are now string[] (multi-select). Render as a comma-
+    // separated line on the printed intake. Old single-string entries fall
+    // through the `typeof v === 'string'` branch above.
+    if (Array.isArray(v)) return v.filter(Boolean).join(', ')
     return String(v)
 }
 

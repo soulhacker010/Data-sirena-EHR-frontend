@@ -4,9 +4,11 @@ import { getApiErrorMessage } from '../utils/errors'
 import { useSearchParams } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { Modal, ActionMenu, EmptyState, PageSkeleton } from '../components/ui'
+import { PayerSearch } from '../components/shared'
 import { billingApi, clientsApi } from '../api'
-import type { Invoice, Claim, Payment, Client } from '../types'
+import type { Invoice, Claim, Payment, Client, Payer, ClaimValidationResult } from '../types'
 import { BILLING_SERVICE_CATALOG, getBillingServiceDescription } from '../utils/billingServiceCatalog'
+import { formatDateSafe } from '../utils/dates'
 
 import {
     MagnifyingGlass,
@@ -31,10 +33,9 @@ import {
 
 // Helpers
 const formatCurrency = (amount: number | string | null | undefined) => `$${(Number(amount) || 0).toFixed(2)}`
-const formatDate = (date: string | undefined) => {
-    if (!date) return '—'
-    return new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-}
+// Delegate to formatDateSafe so date-only strings ('YYYY-MM-DD') don't get
+// pulled forward by a day in negative-UTC timezones.
+const formatDate = (date: string | undefined) => formatDateSafe(date)
 
 const paymentMethodLabels: Record<string, string> = {
     credit_card: 'Credit Card',
@@ -103,6 +104,7 @@ export default function BillingPage() {
     const [claimStatus, setClaimStatus] = useState('all')
     const [claimDateFrom, setClaimDateFrom] = useState('')
     const [claimDateTo, setClaimDateTo] = useState('')
+    const [claimPayerFilter, setClaimPayerFilter] = useState<Payer | null>(null)
 
     // Payments filter
     const [paymentSearch, setPaymentSearch] = useState('')
@@ -143,7 +145,9 @@ export default function BillingPage() {
         payerName: '',
         payerId: ''
     })
+    const [selectedPayer, setSelectedPayer] = useState<Payer | null>(null)
     const [isSaving, setIsSaving] = useState(false)
+    const [claimValidation, setClaimValidation] = useState<ClaimValidationResult | null>(null)
 
     // Fetch invoices
     const fetchInvoices = useCallback(async () => {
@@ -262,8 +266,11 @@ export default function BillingPage() {
             inv.invoice_number.toLowerCase().includes(q)
     })
 
-    // Filter claims by search locally
+    // Filter claims by search + payer locally
     const filteredClaims = claims.filter(claim => {
+        if (claimPayerFilter && claim.payer_id !== claimPayerFilter.payer_id) {
+            return false
+        }
         if (!claimSearch) return true
         const q = claimSearch.toLowerCase()
         return (claim.claim_number || '').toLowerCase().includes(q) ||
@@ -363,6 +370,7 @@ export default function BillingPage() {
 
     const resetClaimForm = () => {
         setClaimFormData({ invoiceId: '', payerName: '', payerId: '' })
+        setSelectedPayer(null)
     }
 
     const openCreateClaimModal = (invoice?: Invoice) => {
@@ -372,7 +380,17 @@ export default function BillingPage() {
             payerName: initialInvoice ? getDefaultPayerName(initialInvoice.id) : '',
             payerId: ''
         })
+        setSelectedPayer(null)
         setIsCreateClaimModalOpen(true)
+    }
+
+    const handlePayerSelect = (payer: Payer | null) => {
+        setSelectedPayer(payer)
+        setClaimFormData(prev => ({
+            ...prev,
+            payerName: payer?.name || '',
+            payerId: payer?.payer_id || '',
+        }))
     }
 
     const handleClaimInvoiceChange = (invoiceId: string) => {
@@ -444,15 +462,50 @@ export default function BillingPage() {
     const handleSubmitClaim = async (claim: Claim) => {
         if (isSaving) return
         setIsSaving(true)
+        setClaimValidation(null)
         try {
-            await billingApi.markClaimSubmitted(claim.id)
-            toast.success('Claim marked as submitted')
+            const result = await billingApi.markClaimSubmitted(claim.id) as Claim & {
+                _submission?: { status: string; message: string; filename: string; test_mode: boolean }
+            }
+            const submission = result._submission
+            if (submission?.status === 'uploaded') {
+                toast.success(`Claim uploaded to Office Ally — ${submission.filename}`)
+            } else if (submission?.status === 'generated') {
+                toast.success('Claim file generated. SFTP upload pending credentials.')
+            } else {
+                toast.success('Claim submitted')
+            }
             setIsClaimModalOpen(false)
             fetchClaims()
         } catch (err: unknown) {
-            toast.error(getApiErrorMessage(err, 'Failed to submit claim'))
+            // Backend returns 400 with {validation: {...}} when pre-checks fail
+            const maybe = err as { response?: { data?: { validation?: ClaimValidationResult } } }
+            const validation = maybe?.response?.data?.validation
+            if (validation && !validation.ok) {
+                setClaimValidation(validation)
+                toast.error(`Claim has ${validation.errors.length} issue${validation.errors.length === 1 ? '' : 's'} — fix before submitting`)
+            } else {
+                toast.error(getApiErrorMessage(err, 'Failed to submit claim'))
+            }
         } finally {
             setIsSaving(false)
+        }
+    }
+
+    const handleValidateClaim = async (claim: Claim) => {
+        setClaimValidation(null)
+        try {
+            const result = await billingApi.validateClaim(claim.id)
+            setClaimValidation(result)
+            if (result.ok && result.warnings.length === 0) {
+                toast.success('Claim is ready to submit')
+            } else if (result.ok) {
+                toast.success(`Claim OK — ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}`)
+            } else {
+                toast.error(`${result.errors.length} issue${result.errors.length === 1 ? '' : 's'} must be fixed`)
+            }
+        } catch (err: unknown) {
+            toast.error(getApiErrorMessage(err, 'Validation check failed'))
         }
     }
 
@@ -767,6 +820,14 @@ export default function BillingPage() {
                             </select>
                             <CaretDown size={14} weight="bold" className="filter-caret" />
                         </div>
+                        <div className="filter-group claim-payer-filter">
+                            <PayerSearch
+                                selectedPayer={claimPayerFilter}
+                                onSelect={setClaimPayerFilter}
+                                placeholder="Filter by payer..."
+                                onlyElectronic={false}
+                            />
+                        </div>
                         <div className="filter-group date-range">
                             <CalendarBlank size={18} weight="regular" />
                             <input
@@ -811,7 +872,19 @@ export default function BillingPage() {
                                 {filteredClaims.map(claim => (
                                     <tr key={claim.id} onClick={() => handleViewClaim(claim)} className="clickable-row">
                                         <td><span className="claim-number">{claim.claim_number || '—'}</span></td>
-                                        <td>{claim.payer_name}</td>
+                                        <td>
+                                            <div className="payer-cell">
+                                                <span>{claim.payer_name}</span>
+                                                {claim.payer_id && !claim.payer_recognized && (
+                                                    <span
+                                                        className="badge-warning-sm"
+                                                        title="Payer not in Office Ally directory — this claim cannot be submitted electronically"
+                                                    >
+                                                        <Warning size={11} weight="fill" /> Unrecognized
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </td>
                                         <td>{formatDate(claim.session_date)}</td>
                                         <td>{formatDate(claim.submitted_at)}</td>
                                         <td style={{ textAlign: 'right' }}><span className="amount">{formatCurrency(claim.billed_amount)}</span></td>
@@ -1365,14 +1438,56 @@ export default function BillingPage() {
                             </div>
                         )}
 
+                        {claimValidation && (
+                            <div className={`validation-panel ${claimValidation.ok ? 'validation-ok' : 'validation-error'}`}>
+                                <div className="validation-panel-header">
+                                    {claimValidation.ok ? (
+                                        <><CheckCircle size={16} weight="fill" /> Claim is ready to submit</>
+                                    ) : (
+                                        <><Warning size={16} weight="fill" /> {claimValidation.errors.length} issue{claimValidation.errors.length === 1 ? '' : 's'} must be fixed</>
+                                    )}
+                                </div>
+                                {claimValidation.errors.length > 0 && (
+                                    <ul className="validation-list validation-errors">
+                                        {claimValidation.errors.map((issue, i) => (
+                                            <li key={`err-${i}`}>{issue.message}</li>
+                                        ))}
+                                    </ul>
+                                )}
+                                {claimValidation.warnings.length > 0 && (
+                                    <>
+                                        <div className="validation-panel-subheader">
+                                            {claimValidation.warnings.length} warning{claimValidation.warnings.length === 1 ? '' : 's'}
+                                        </div>
+                                        <ul className="validation-list validation-warnings">
+                                            {claimValidation.warnings.map((issue, i) => (
+                                                <li key={`warn-${i}`}>{issue.message}</li>
+                                            ))}
+                                        </ul>
+                                    </>
+                                )}
+                            </div>
+                        )}
+
                         <div className="form-actions">
                             <button
                                 type="button"
                                 className="btn-secondary"
-                                onClick={() => { setIsClaimModalOpen(false); setResubmissionNotes('') }}
+                                onClick={() => { setIsClaimModalOpen(false); setResubmissionNotes(''); setClaimValidation(null) }}
                             >
                                 Close
                             </button>
+                            {(selectedClaim.status === 'created' || selectedClaim.status === 'denied') && (
+                                <button
+                                    type="button"
+                                    className="btn-secondary"
+                                    onClick={() => handleValidateClaim(selectedClaim)}
+                                    disabled={isSaving}
+                                >
+                                    <CheckCircle size={18} />
+                                    Validate
+                                </button>
+                            )}
                             {selectedClaim.status === 'created' && (
                                 <button
                                     type="button"
@@ -1511,26 +1626,17 @@ export default function BillingPage() {
                     </div>
 
                     <div className="form-group">
-                        <label className="form-label">Payer Name *</label>
-                        <input
-                            type="text"
-                            value={claimFormData.payerName}
-                            onChange={(e) => setClaimFormData(prev => ({ ...prev, payerName: e.target.value }))}
-                            className="form-input-basic"
-                            placeholder="Insurance payer name"
+                        <label className="form-label">Payer *</label>
+                        <PayerSearch
+                            selectedPayer={selectedPayer}
+                            onSelect={handlePayerSelect}
+                            placeholder="Search payer name or ID..."
                             required
                         />
-                    </div>
-
-                    <div className="form-group">
-                        <label className="form-label">Payer ID</label>
-                        <input
-                            type="text"
-                            value={claimFormData.payerId}
-                            onChange={(e) => setClaimFormData(prev => ({ ...prev, payerId: e.target.value }))}
-                            className="form-input-basic"
-                            placeholder="Optional payer identifier"
-                        />
+                        <p className="form-hint">
+                            Only payers that accept electronic claims (837P) are shown.
+                            Payer ID is auto-filled when you select.
+                        </p>
                     </div>
 
                     <div className="payment-form-actions">

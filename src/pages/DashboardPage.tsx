@@ -188,7 +188,7 @@ export default function DashboardPage() {
                 )}
 
                 {canAccessClinical && (
-                    <div className="stat-card" onClick={() => navigate('/notes')} style={{ cursor: 'pointer' }}>
+                    <div className="stat-card" onClick={() => navigate('/notes?status=pending')} style={{ cursor: 'pointer' }}>
                         <div className="stat-card-content">
                             <p className="stat-card-label">Pending Notes</p>
                             <p className="stat-card-value">{stats.pending_notes}</p>
@@ -219,6 +219,49 @@ export default function DashboardPage() {
                     </div>
                 )}
             </div>
+
+            {/* E22: Incomplete drafts — surfaces docs the user started but
+                didn't sign. Auto-save protects the work; this widget reminds
+                them to come back and finish. Hidden when there are none. */}
+            {stats.incomplete_drafts && stats.incomplete_drafts.length > 0 && (
+                <div className="incomplete-drafts-card">
+                    <div className="incomplete-drafts-header">
+                        <NotePencil size={16} weight="duotone" />
+                        <h3>Drafts to finish</h3>
+                        <span className="incomplete-drafts-count">{stats.incomplete_drafts.length}</span>
+                    </div>
+                    <ul className="incomplete-drafts-list">
+                        {stats.incomplete_drafts.map(d => {
+                            const route = (
+                                d.kind === 'session_notes' ? `/notes/${d.id}`
+                                : d.kind === 'intakes' ? `/intakes/${d.id}`
+                                : `/treatment-plans/${d.id}`
+                            )
+                            const kindLabel = (
+                                d.kind === 'session_notes' ? 'Session Note'
+                                : d.kind === 'intakes' ? 'Intake'
+                                : 'Treatment Plan'
+                            )
+                            return (
+                                <li key={`${d.kind}-${d.id}`} className="incomplete-drafts-item">
+                                    <button
+                                        type="button"
+                                        className="incomplete-drafts-link"
+                                        onClick={() => navigate(route)}
+                                    >
+                                        <span className="incomplete-drafts-kind">{kindLabel}</span>
+                                        <span className="incomplete-drafts-client">{d.client_name}</span>
+                                        <span className="incomplete-drafts-status">{d.status}</span>
+                                        <time className="incomplete-drafts-time">
+                                            updated {new Date(d.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                        </time>
+                                    </button>
+                                </li>
+                            )
+                        })}
+                    </ul>
+                </div>
+            )}
 
             {/* Quick Actions — filtered by role */}
             <div className="quick-actions">

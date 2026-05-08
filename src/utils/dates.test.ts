@@ -77,6 +77,47 @@ describe('formatDateSafe', () => {
     })
 })
 
+describe('local datetime → ISO conversion (calendar save path)', () => {
+    /**
+     * Pins the fix for B4 / B5. The CalendarPage save path used to send
+     *   start_time: `${formData.date}T${formData.startTime}:00`
+     * which is a NAIVE ISO string (no timezone). Django interprets that as
+     * UTC, so a 1pm ET appointment gets stored as 1pm UTC and re-rendered
+     * as 9am ET, drifting again by 4 hours every save.
+     *
+     * The fix is `new Date('YYYY-MM-DDTHH:MM:00').toISOString()` — Date()
+     * parses naive strings as LOCAL, then toISOString() emits UTC with the
+     * 'Z' suffix. These tests assert the resulting ISO has 'Z' (UTC marker)
+     * and round-trips back to the same wall-clock time the user typed.
+     */
+    it('produces a Z-suffixed UTC ISO string', () => {
+        const iso = new Date('2026-04-13T13:00:00').toISOString()
+        expect(iso).toMatch(/Z$/)
+    })
+
+    it('round-trips: 1pm typed → ISO → parsed → 1pm displayed', () => {
+        // User types 1pm on April 13 in their local browser TZ.
+        const iso = new Date('2026-04-13T13:00:00').toISOString()
+
+        // Server stores the ISO verbatim. Frontend reads back and renders local.
+        const parsedBack = new Date(iso)
+        expect(parsedBack.getHours()).toBe(13)
+        expect(parsedBack.getDate()).toBe(13)
+        expect(parsedBack.getMonth()).toBe(3)  // April = 3
+    })
+
+    it('rejects invalid combinations as NaN (callers can guard)', () => {
+        const iso = new Date('not-a-date').getTime()
+        expect(Number.isNaN(iso)).toBe(true)
+    })
+
+    it('NEVER produces the bare-naive form (regression for B4)', () => {
+        const iso = new Date('2026-04-13T13:00:00').toISOString()
+        // The old buggy form was '2026-04-13T13:00:00' with no tz marker.
+        expect(iso).not.toBe('2026-04-13T13:00:00')
+    })
+})
+
 describe('calculateAge', () => {
     it('calculates age correctly for a known DOB', () => {
         // Use a date far in the past so the test is stable

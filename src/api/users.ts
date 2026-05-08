@@ -9,18 +9,24 @@ export interface CreateUserPayload {
     password: string
     organization_id: string
     phone?: string
+    /** Array of state license identifiers (model: ArrayField). */
     licenses?: string[]
-    credentials?: string[]
+    /** Free-text credentials line (model: CharField max 255), e.g. "PsyD, ABPP". */
+    credentials?: string
+    /** E5: provider's individual (Type 1) NPI; 10 digits, Luhn-validated server-side. */
+    npi?: string
 }
 
 export interface UpdateUserPayload {
     first_name?: string
     last_name?: string
+    email?: string
     role?: string
     phone?: string
     is_active?: boolean
     licenses?: string[]
-    credentials?: string[]
+    credentials?: string
+    npi?: string
 }
 
 export const usersApi = {
@@ -52,5 +58,13 @@ export const usersApi = {
 
     delete: async (id: string): Promise<void> => {
         await apiClient.delete(`/auth/users/${id}/`)
+    },
+
+    /** Admin sends a password reset link to this user's email. (B12) */
+    sendResetLink: async (id: string): Promise<{ detail: string; email: string }> => {
+        const { data } = await apiClient.post<{ detail: string; email: string }>(
+            `/auth/users/${id}/send-reset-link/`,
+        )
+        return data
     },
 }

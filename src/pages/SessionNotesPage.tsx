@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import toast from 'react-hot-toast'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { useAuth } from '../context'
 import { PageSkeleton } from '../components/ui'
 import { Modal, ConfirmDialog, ActionMenu, EmptyState } from '../components/ui'
 import { notesApi, clientsApi, lookupsApi, getApiErrorMessage } from '../api'
 import type { SessionNote, Client, User } from '../types'
+import { formatDateSafe } from '../utils/dates'
+import { cptCodes } from '../constants/cptCodes'
 import {
     MagnifyingGlass,
     Plus,
@@ -35,20 +37,15 @@ const noteTemplates = [
     { id: 'supervision', name: 'Supervision Session', objectives: 'Provide supervision for [RBT name]', interventions: 'Direct observation, feedback, competency review', clientResponse: 'Supervisee demonstrated competency in observed skills' },
 ]
 
-// Format date
-const formatDate = (date: string | undefined) => {
-    if (!date) return '—'
-    return new Date(date).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
-    })
-}
+// Format date — delegates to formatDateSafe so date-only strings ('YYYY-MM-DD')
+// don't slip back a day in negative-UTC timezones.
+const formatDate = (date: string | undefined) => formatDateSafe(date)
 
 const canDeleteNote = (note: SessionNote) => note.status === 'draft'
 
 export default function SessionNotesPage() {
     const [searchParams, setSearchParams] = useSearchParams()
+    const navigate = useNavigate()
     const { user } = useAuth()
     const [isLoading, setIsLoading] = useState(true)
     const [notes, setNotes] = useState<SessionNote[]>([])
@@ -56,9 +53,14 @@ export default function SessionNotesPage() {
     const [clientsList, setClientsList] = useState<Client[]>([])
     const [providersList, setProvidersList] = useState<User[]>([])
 
-    // Filters
+    // Filters — initial statusFilter is hydrated from the URL so that links
+    // like `/notes?status=pending` (used by the dashboard's Pending Notes
+    // drill-down) land on the correct filtered view rather than the default
+    // "All Status" which would surface signed notes too.
     const [searchQuery, setSearchQuery] = useState('')
-    const [statusFilter, setStatusFilter] = useState('all')
+    const [statusFilter, setStatusFilter] = useState(
+        () => searchParams.get('status') || 'all',
+    )
     const [providerFilter, setProviderFilter] = useState('')
     const [clientFilter, setClientFilter] = useState('')
     const [serviceCodeFilter, setServiceCodeFilter] = useState('')
@@ -222,7 +224,12 @@ export default function SessionNotesPage() {
     }, [])
 
     const handleNewNote = () => {
-        openNewNote()
+        // B14: Both entry points (sidebar "Session Notes" → New Note, and the
+        // dashboard "+ New Note" Quick Action) now route to the same full
+        // editor at /notes/new. Previously the sidebar opened an inline modal
+        // with a different field set, which is what Dr. Joe described as
+        // "BCBA notes (sidebar) vs psychotherapy codes (dashboard)".
+        navigate('/notes/new')
     }
 
     const loadNoteDetail = async (note: SessionNote) => {
@@ -547,16 +554,22 @@ export default function SessionNotesPage() {
 
     return (
         <DashboardLayout>
-            {/* Page Header */}
+            {/* Page Header — E20: "+ New Note" moved to the LEFT next to the
+                title (was on the right edge of the page; therapists had to
+                scroll horizontally to find it on smaller monitors). The
+                action stays primary visually but is now adjacent to the page
+                title, the first thing the eye lands on. */}
             <div className="page-header">
-                <div>
-                    <h1 className="page-title">Session Notes</h1>
-                    <p className="page-subtitle">{totalCount} total notes</p>
+                <div className="page-header-title-group">
+                    <button className="btn-primary" onClick={handleNewNote}>
+                        <Plus size={18} weight="bold" />
+                        New Note
+                    </button>
+                    <div>
+                        <h1 className="page-title">Session Notes</h1>
+                        <p className="page-subtitle">{totalCount} total notes</p>
+                    </div>
                 </div>
-                <button className="btn-primary" onClick={handleNewNote}>
-                    <Plus size={18} weight="bold" />
-                    New Note
-                </button>
             </div>
 
             {/* Filters Bar */}
@@ -579,6 +592,7 @@ export default function SessionNotesPage() {
                         className="filter-select"
                     >
                         <option value="all">All Status</option>
+                        <option value="pending">Pending (Draft + Completed)</option>
                         <option value="draft">Draft</option>
                         <option value="completed">Completed</option>
                         <option value="signed">Signed</option>
@@ -956,11 +970,14 @@ export default function SessionNotesPage() {
                                     onChange={(e) => setFormData(prev => ({ ...prev, cptCode: e.target.value }))}
                                     className="form-input-basic"
                                 >
-                                    <option value="97151">97151 - Behavior Assessment</option>
-                                    <option value="97153">97153 - Adaptive Behavior Treatment</option>
-                                    <option value="97155">97155 - Treatment Modification</option>
-                                    <option value="97156">97156 - Family Training</option>
-                                    <option value="97157">97157 - Group Training</option>
+                                    {/* Single source of truth — keeps ABA + psychotherapy codes in sync.
+                                        Previously hardcoded only ABA codes; that's why Dr. Joe couldn't
+                                        find 90834 in the Blank Template (B9). */}
+                                    {cptCodes.map(c => (
+                                        <option key={c.code} value={c.code}>
+                                            {c.code} - {c.description}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
                         </div>

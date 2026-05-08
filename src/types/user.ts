@@ -22,6 +22,8 @@ export interface User {
     phone?: string
     licenses?: string[]
     credentials?: string
+    /** E5: provider's individual (Type 1) NPI. Empty for non-clinical staff. */
+    npi?: string
     is_active: boolean
     is_supervisor: boolean
     last_login?: string

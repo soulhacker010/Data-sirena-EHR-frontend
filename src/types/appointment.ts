@@ -29,10 +29,21 @@ export interface AppointmentAuthorization {
     units_remaining: number
 }
 
+/** E31 Half A: appointments may now be staff meetings, personal blocks, etc.
+ *  When event_type !== 'client_session' the client field is null and `title`
+ *  carries the display name instead. */
+export type AppointmentEventType =
+    | 'client_session'
+    | 'staff_meeting'
+    | 'personal_block'
+    | 'training'
+    | 'other'
+
 export interface Appointment {
     id: string
     organization_id: string
-    client: AppointmentClient
+    /** Null when this is a non-session calendar block. */
+    client: AppointmentClient | null
     provider: AppointmentProvider
     location?: AppointmentLocation
     authorization?: AppointmentAuthorization
@@ -47,12 +58,17 @@ export interface Appointment {
     is_recurring: boolean
     recurrence_pattern?: RecurrencePattern
     series_id?: string
+    /** E31 Half A */
+    event_type: AppointmentEventType
+    /** Title used to render non-session events (ignored for client sessions). */
+    title?: string
     created_at: string
     updated_at: string
 }
 
 export interface CreateAppointmentPayload {
-    client_id: string
+    /** Required iff event_type is 'client_session' (the default). */
+    client_id?: string
     provider_id: string
     location_id?: string
     authorization_id?: string
@@ -65,6 +81,9 @@ export interface CreateAppointmentPayload {
     notes?: string
     is_recurring?: boolean
     recurrence_pattern?: RecurrencePattern
+    event_type?: AppointmentEventType
+    /** Required for non-session events. */
+    title?: string
 }
 
 export interface UpdateAppointmentPayload extends Partial<CreateAppointmentPayload> {

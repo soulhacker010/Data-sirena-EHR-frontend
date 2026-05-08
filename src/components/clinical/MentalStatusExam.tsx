@@ -1,24 +1,31 @@
 import { Brain } from '@phosphor-icons/react'
 import { MSE_FIELDS } from '../../constants/clinicalFields'
+import MultiSelectField from '../shared/MultiSelectField'
 
+/**
+ * E6 + E7 + E8 (Dr. Joe 2026-05-04): every MSE field is now a multi-select
+ * combobox supporting WNL as a first-class option (E6 — already in the
+ * options list), free-text input (E7), and multiple selections at once (E8).
+ *
+ * Storage: `note_data[field.key]` is now `string[]`. Old notes that stored
+ * `string` are coerced to a one-element array on read by `MultiSelectField`,
+ * and the printIntake helper handles both shapes transparently.
+ */
 interface MentalStatusExamProps {
-    values: Record<string, string>
-    onChange: (key: string, value: string) => void
+    /** Now allows arrays on the values map — old single-string entries
+     *  still work (MultiSelectField coerces). */
+    values: Record<string, string | string[]>
+    /** Always called with an array of strings. */
+    onChange: (key: string, value: string[]) => void
     disabled?: boolean
     collapsed?: boolean
     onToggleCollapse?: () => void
 }
 
-const OTHER_PREFIX = 'Other: '
-
-function getSelectValue(raw: string): string {
-    if (raw.startsWith(OTHER_PREFIX)) return 'Other (specify)'
-    return raw
-}
-
-function getOtherText(raw: string): string {
-    if (raw.startsWith(OTHER_PREFIX)) return raw.slice(OTHER_PREFIX.length)
-    return ''
+function isFilled(value: string | string[] | undefined): boolean {
+    if (!value) return false
+    if (Array.isArray(value)) return value.length > 0
+    return value.trim().length > 0
 }
 
 export default function MentalStatusExam({
@@ -28,7 +35,7 @@ export default function MentalStatusExam({
     collapsed = false,
     onToggleCollapse,
 }: MentalStatusExamProps) {
-    const filledCount = MSE_FIELDS.filter(f => values[f.key]).length
+    const filledCount = MSE_FIELDS.filter(f => isFilled(values[f.key])).length
 
     return (
         <div className="clinical-section mse-section">
@@ -52,45 +59,18 @@ export default function MentalStatusExam({
 
             {!collapsed && (
                 <div className="mse-grid">
-                    {MSE_FIELDS.map(field => {
-                        const raw = values[field.key] || ''
-                        const selectVal = getSelectValue(raw)
-                        const isOther = selectVal === 'Other (specify)'
-
-                        return (
-                            <div key={field.key} className="mse-field">
-                                <label className="form-label">{field.label}</label>
-                                <select
-                                    className="form-input-basic"
-                                    value={selectVal}
-                                    onChange={e => {
-                                        if (e.target.value === 'Other (specify)') {
-                                            onChange(field.key, OTHER_PREFIX)
-                                        } else {
-                                            onChange(field.key, e.target.value)
-                                        }
-                                    }}
-                                    disabled={disabled}
-                                >
-                                    <option value="">Select...</option>
-                                    {field.options.map(opt => (
-                                        <option key={opt} value={opt}>{opt}</option>
-                                    ))}
-                                </select>
-                                {isOther && (
-                                    <input
-                                        type="text"
-                                        className="form-input-basic"
-                                        style={{ marginTop: '0.375rem' }}
-                                        placeholder="Describe..."
-                                        value={getOtherText(raw)}
-                                        onChange={e => onChange(field.key, OTHER_PREFIX + e.target.value)}
-                                        disabled={disabled}
-                                    />
-                                )}
-                            </div>
-                        )
-                    })}
+                    {MSE_FIELDS.map(field => (
+                        <div key={field.key} className="mse-field">
+                            <label className="form-label">{field.label}</label>
+                            <MultiSelectField
+                                options={field.options.filter(o => o !== 'Other (specify)')}
+                                value={values[field.key]}
+                                onChange={(next) => onChange(field.key, next)}
+                                disabled={disabled}
+                                placeholder="Type custom observation…"
+                            />
+                        </div>
+                    ))}
                 </div>
             )}
         </div>

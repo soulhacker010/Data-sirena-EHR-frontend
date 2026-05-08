@@ -5,13 +5,15 @@ import { DashboardLayout } from '../components/layout'
 import { PageSkeleton } from '../components/ui'
 import Modal from '../components/ui/Modal'
 import SignaturePad from '../components/ui/SignaturePad'
-import { notesApi, clientsApi, lookupsApi, getApiErrorMessage } from '../api'
+import { notesApi, clientsApi, lookupsApi, appointmentsApi, getApiErrorMessage } from '../api'
 import type { SessionNote, Client, User } from '../types'
 import { MentalStatusExam, RiskAssessment, ABADataFields, InterventionsChecklist } from '../components/clinical'
 import { ABA_CPT_CODES } from '../constants/clinicalFields'
 import { cptCodes } from '../constants/cptCodes'
 import { useAuth } from '../context'
 import { printNote } from '../utils/printNote'
+import { formatDateSafe } from '../utils/dates'
+import { AddendumThread } from '../components/shared'
 import {
     ArrowLeft,
     User as UserIcon,
@@ -28,11 +30,28 @@ import {
     FilePdf
 } from '@phosphor-icons/react'
 
+/**
+ * E17: Default medical-necessity boilerplate. Pre-filled into the textarea
+ * (not just a placeholder) so providers see the standard language and can
+ * edit/individualize it inline. Same pattern as Intake & Treatment Plan
+ * editors — Dr. Joe asked for "keep the template but if someone wants to
+ * individualize allow for it".
+ */
+const DEFAULT_MEDICAL_NECESSITY = "Services were medically necessary to address the client's diagnosis and treatment goals. The interventions provided are consistent with the treatment plan and are expected to improve the client's functioning."
+
 export default function NoteEditorPage() {
     const { id } = useParams()
     const navigate = useNavigate()
     const [searchParams] = useSearchParams()
     const clientIdParam = searchParams.get('client')
+    /**
+     * E24: when entering with `?appointment=X` (used by the calendar's "Start
+     * Session" / "Write Note" buttons) we first check whether a note already
+     * exists for that appointment and redirect to it. Otherwise we pre-fill
+     * the new-note form with the appointment's client + service code, and
+     * include `appointment_id` on create so the FK gets set server-side.
+     */
+    const appointmentIdParam = searchParams.get('appointment')
     const { user } = useAuth()
 
     const [note, setNote] = useState<SessionNote | null>(null)
@@ -94,6 +113,35 @@ export default function NoteEditorPage() {
                 setClients(clientsRes.results)
                 setSupervisors(providersRes.filter(p => p.role === 'supervisor') as unknown as User[])
 
+                // E24: appointment-aware new-note flow. Either land on the
+                // existing note for the appointment, or pre-fill from the
+                // appointment so the provider doesn't re-enter client+CPT.
+                if (isNewNote && appointmentIdParam) {
+                    try {
+                        const existingForAppt = await notesApi.getAll({
+                            appointment: appointmentIdParam,
+                            page_size: 1,
+                        })
+                        if (existingForAppt.results.length > 0) {
+                            // A note already exists — redirect to it. `replace`
+                            // so the back button doesn't bounce them back here.
+                            navigate(`/notes/${existingForAppt.results[0].id}`, { replace: true })
+                            return
+                        }
+                    } catch {
+                        // Couldn't check — fall through to normal new-note flow.
+                    }
+
+                    try {
+                        const appt = await appointmentsApi.getById(appointmentIdParam)
+                        setSelectedClientId(appt.client.id)
+                        if (appt.service_code) setServiceCode(appt.service_code)
+                    } catch {
+                        // Appointment fetch failed — provider can still pick
+                        // client manually; don't block.
+                    }
+                }
+
                 if (!isNewNote && id) {
                     // Load existing note
                     const existingNote = await notesApi.getById(id)
@@ -151,7 +199,7 @@ export default function NoteEditorPage() {
             }
         }
         load()
-    }, [id, isNewNote, navigate])
+    }, [id, isNewNote, navigate, appointmentIdParam])
 
     const handleContentChange = (field: string, value: string) => {
         setFormContent(prev => {
@@ -224,6 +272,10 @@ export default function NoteEditorPage() {
                     client_id: selectedClientId,
                     template_id: selectedTemplate || undefined,
                     note_data: { ...formContent, ...clinicalData },
+                    // E24: link the note to the originating appointment so the
+                    // calendar can later show "note done" and the dashboard
+                    // counters can credit the right session.
+                    appointment_id: appointmentIdParam || undefined,
                 })
                 setNote(created)
                 toast.success('Note created')
@@ -475,7 +527,7 @@ export default function NoteEditorPage() {
                         {note?.session_date && (
                             <div className="note-editor-info-row">
                                 <CalendarBlank size={16} />
-                                <span>{new Date(note.session_date).toLocaleDateString('en-US', {
+                                <span>{formatDateSafe(note.session_date, {
                                     weekday: 'short',
                                     month: 'short',
                                     day: 'numeric',
@@ -488,6 +540,26 @@ export default function NoteEditorPage() {
                             <span>{providerName}</span>
                         </div>
                     </div>
+
+                    {/* E16: Show client's active diagnoses on every note. Dr. Joe:
+                        "session notes and all documentation should have the
+                        diagnosis populated". Read-only here — providers update
+                        the dx list on the client record itself. */}
+                    {(() => {
+                        const activeClient = clients.find(c => c.id === (note?.client_id || selectedClientId))
+                        const dxCodes = activeClient?.diagnosis_codes || []
+                        if (dxCodes.length === 0) return null
+                        return (
+                            <div className="note-editor-info-section">
+                                <h4>Diagnoses</h4>
+                                <div className="diagnosis-chip-row">
+                                    {dxCodes.map(code => (
+                                        <span key={code} className="diagnosis-chip">{code}</span>
+                                    ))}
+                                </div>
+                            </div>
+                        )
+                    })()}
 
                     <div className="note-editor-info-section">
                         <h4>Service Information</h4>
@@ -643,6 +715,21 @@ export default function NoteEditorPage() {
                         </div>
                     )}
 
+                    {/* E15: Evidence-based intervention checklist sits ABOVE the
+                        SOAP narrative so providers pick interventions first,
+                        then describe the patient-specific application below.
+                        Dr. Joe (2026-05-04): "you pick the evidence-based
+                        intervention, then clarify specific interventions and
+                        individualized to patient in narrative makes sense as
+                        you work through the note." */}
+                    <InterventionsChecklist
+                        selected={(clinicalData.interventions_checklist as string[]) || []}
+                        onChange={(selected) => handleClinicalChange('interventions_checklist', selected)}
+                        disabled={!!note?.is_locked}
+                        collapsed={collapsedSections.interventions}
+                        onToggleCollapse={() => setCollapsedSections(prev => ({ ...prev, interventions: !prev.interventions }))}
+                    />
+
                     {/* Dynamic Form Fields */}
                     <div className="note-editor-form">
                         <div className="note-editor-field">
@@ -709,13 +796,12 @@ export default function NoteEditorPage() {
                         </div>
                     </div>
 
-                    {/* Clinical Sections */}
+                    {/* Clinical Sections — MSE values are now string[] (E7+E8).
+                        Pass raw values; MultiSelectField coerces legacy strings. */}
                     <MentalStatusExam
                         values={Object.fromEntries(
-                            Object.entries(clinicalData)
-                                .filter(([k]) => k.startsWith('mse_'))
-                                .map(([k, v]) => [k, String(v || '')])
-                        )}
+                            Object.entries(clinicalData).filter(([k]) => k.startsWith('mse_'))
+                        ) as Record<string, string | string[]>}
                         onChange={handleClinicalChange}
                         disabled={!!note?.is_locked}
                         collapsed={collapsedSections.mse}
@@ -744,14 +830,6 @@ export default function NoteEditorPage() {
                         />
                     )}
 
-                    <InterventionsChecklist
-                        selected={(clinicalData.interventions_checklist as string[]) || []}
-                        onChange={(selected) => handleClinicalChange('interventions_checklist', selected)}
-                        disabled={!!note?.is_locked}
-                        collapsed={collapsedSections.interventions}
-                        onToggleCollapse={() => setCollapsedSections(prev => ({ ...prev, interventions: !prev.interventions }))}
-                    />
-
                     {/* Medical Necessity Statement (BUILD 2.6) */}
                     <div className="clinical-section" style={{ marginTop: '1.5rem' }}>
                         <div className="clinical-section-header" style={{ cursor: 'default' }}>
@@ -763,9 +841,8 @@ export default function NoteEditorPage() {
                         <div style={{ padding: '1rem' }}>
                             <textarea
                                 className="form-textarea"
-                                value={(clinicalData.medical_necessity as string) || ''}
+                                value={(clinicalData.medical_necessity as string) || DEFAULT_MEDICAL_NECESSITY}
                                 onChange={e => handleClinicalChange('medical_necessity', e.target.value)}
-                                placeholder="Services were medically necessary to address the client's diagnosis and treatment goals. The interventions provided are consistent with the treatment plan and are expected to improve the client's functioning."
                                 rows={3}
                                 disabled={!!note?.is_locked}
                             />
@@ -783,6 +860,15 @@ export default function NoteEditorPage() {
                                 <CalendarPlus size={16} /> Schedule Next Session
                             </button>
                         </div>
+                    )}
+
+                    {/* E11 + E18: addendum thread is the right way to amend a
+                        signed note (the original contents stay sealed). For
+                        unsaved drafts there's no parent ID yet, so the form
+                        is hidden — but the section is shown so providers know
+                        it'll be available after first save. */}
+                    {note && (
+                        <AddendumThread parentKind="note" parentId={note.id} />
                     )}
                 </div>
             </div>

@@ -11,6 +11,7 @@ import SignaturePad from '../components/ui/SignaturePad'
 import { treatmentPlansApi } from '../api/treatmentPlans'
 import type { TreatmentPlan, TreatmentPlanGoal } from '../api/treatmentPlans'
 import { useAuth } from '../context'
+import { AddendumThread } from '../components/shared'
 import { getApiErrorMessage } from '../utils/errors'
 import { printTreatmentPlan } from '../utils/printTreatmentPlan'
 
@@ -150,6 +151,56 @@ export default function TreatmentPlanEditorPage() {
             setReviewDate(d.toISOString().split('T')[0])
         }
     }, [startDate, reviewDate, isEditMode])
+
+    // E13: Auto-pull diagnoses + strengths from latest signed intake when a NEW
+    // plan opens with a client selected (or when the user picks one). Mirrors
+    // the existing "Pull Intake Strengths" button so the data Dr. Joe expects
+    // ("All info should auto populate (diagnoses etc)") shows up without
+    // requiring a manual click. Only fires once per client and never clobbers
+    // values the user has already typed.
+    const autoPulledClientRef = useRef<string | null>(null)
+    useEffect(() => {
+        if (isEditMode || !selectedClientId) return
+        if (autoPulledClientRef.current === selectedClientId) return
+        autoPulledClientRef.current = selectedClientId
+
+        let cancelled = false
+        treatmentPlansApi.pullIntakeStrengths(selectedClientId)
+            .then(strengths => {
+                if (cancelled) return
+                setPlanData(prev => {
+                    const next = { ...prev }
+                    if (!next.primary_diagnosis && strengths.primary_diagnosis) {
+                        next.primary_diagnosis = strengths.primary_diagnosis
+                    }
+                    if (!next.secondary_diagnoses && strengths.secondary_diagnoses) {
+                        next.secondary_diagnoses = strengths.secondary_diagnoses
+                    }
+                    if (!next.client_strengths && strengths.client_strengths) {
+                        next.client_strengths = strengths.client_strengths
+                    }
+                    if (!next.support_systems && strengths.support_systems) {
+                        next.support_systems = strengths.support_systems
+                    }
+                    if (!next.tentative_goals && strengths.tentative_goals) {
+                        next.tentative_goals = strengths.tentative_goals
+                    }
+                    if (!next.frequency && strengths.treatment_frequency) {
+                        next.frequency = strengths.treatment_frequency
+                    }
+                    if (!next.duration && strengths.treatment_duration) {
+                        next.duration = strengths.treatment_duration
+                    }
+                    return next
+                })
+            })
+            .catch(() => {
+                // No signed intake for this client yet — silent. Per Dr. Joe's
+                // workflow this is fine; he'll fill the plan manually.
+            })
+
+        return () => { cancelled = true }
+    }, [isEditMode, selectedClientId])
 
     // ─── Handlers ─────────────────────────────────────────────────────────────
     const updatePlanField = useCallback((key: string, value: unknown) => {
@@ -330,7 +381,7 @@ export default function TreatmentPlanEditorPage() {
                 <div className="intake-editor-form">
                     {/* ─── 4.1 Header ──────────────────────────────────────────── */}
                     <div className="intake-section">
-                        <SH sid="header" title="Client & Plan Information" num="4.1" />
+                        <SH sid="header" title="Client & Plan Information" num="1" />
                         {sections.header && (
                             <div className="intake-section-body">
                                 <div className="intake-grid-2">
@@ -399,7 +450,7 @@ export default function TreatmentPlanEditorPage() {
 
                     {/* ─── 4.3-4.5 Goal Grid ───────────────────────────────────── */}
                     <div className="intake-section">
-                        <SH sid="goals" title="Treatment Goals" num="4.3" />
+                        <SH sid="goals" title="Treatment Goals" num="2" />
                         {sections.goals && (
                             <div className="intake-section-body">
                                 {goals.map((goal, idx) => (
@@ -495,7 +546,7 @@ export default function TreatmentPlanEditorPage() {
 
                     {/* ─── 4.6 Interventions / Modalities ──────────────────────── */}
                     <div className="intake-section">
-                        <SH sid="interventions" title="Interventions / Modalities" num="4.6" />
+                        <SH sid="interventions" title="Interventions / Modalities" num="3" />
                         {sections.interventions && (
                             <div className="intake-section-body">
                                 <InterventionsChecklist
@@ -503,13 +554,33 @@ export default function TreatmentPlanEditorPage() {
                                     onChange={(selected: string[]) => updatePlanField('interventions_checklist', selected)}
                                     disabled={isLocked}
                                 />
+
+                                {/* E14: Per-plan narrative under the dropdown to
+                                    individualize. Dr. Joe (2026-05-04): "needs
+                                    a narrative box under drop down for
+                                    interventions to individualize and put
+                                    specific interventions so notes are not
+                                    perceived as boiler plate." */}
+                                <div className="form-group" style={{ marginTop: '1rem' }}>
+                                    <label className="form-label">
+                                        Individualization Narrative
+                                    </label>
+                                    <textarea
+                                        className="form-textarea"
+                                        rows={5}
+                                        placeholder="Describe how the selected interventions will be tailored to this specific client — particular techniques, modifications, sequencing, and patient-specific considerations. Plain language, not boilerplate."
+                                        value={(planData.interventions_narrative as string) || ''}
+                                        onChange={e => updatePlanField('interventions_narrative', e.target.value)}
+                                        disabled={isLocked}
+                                    />
+                                </div>
                             </div>
                         )}
                     </div>
 
                     {/* ─── 4.7 Frequency & Duration ────────────────────────────── */}
                     <div className="intake-section">
-                        <SH sid="frequency" title="Frequency & Duration of Services" num="4.7" />
+                        <SH sid="frequency" title="Frequency & Duration of Services" num="4" />
                         {sections.frequency && (
                             <div className="intake-section-body">
                                 <div className="intake-grid-2">
@@ -554,7 +625,7 @@ export default function TreatmentPlanEditorPage() {
 
                     {/* ─── 4.8 Involvement of Others ───────────────────────────── */}
                     <div className="intake-section">
-                        <SH sid="involvement" title="Involvement of Others" num="4.8" />
+                        <SH sid="involvement" title="Involvement of Others" num="5" />
                         {sections.involvement && (
                             <div className="intake-section-body">
                                 {[
@@ -577,7 +648,7 @@ export default function TreatmentPlanEditorPage() {
 
                     {/* ─── 4.9 Special Needs ───────────────────────────────────── */}
                     <div className="intake-section">
-                        <SH sid="special" title="Special Needs / Accommodations" num="4.9" />
+                        <SH sid="special" title="Special Needs / Accommodations" num="6" />
                         {sections.special && (
                             <div className="intake-section-body">
                                 <textarea className="form-textarea" rows={3}
@@ -591,7 +662,7 @@ export default function TreatmentPlanEditorPage() {
 
                     {/* ─── 4.10 Strengths & Supports ───────────────────────────── */}
                     <div className="intake-section">
-                        <SH sid="strengths" title="Strengths & Supports" num="4.10" />
+                        <SH sid="strengths" title="Strengths & Supports" num="7" />
                         {sections.strengths && (
                             <div className="intake-section-body">
                                 {!isLocked && (
@@ -622,7 +693,7 @@ export default function TreatmentPlanEditorPage() {
 
                     {/* ─── 4.13 Footer: Medical Necessity & Signatures ─────────── */}
                     <div className="intake-section">
-                        <SH sid="footer" title="Medical Necessity & Signatures" num="4.13" />
+                        <SH sid="footer" title="Medical Necessity & Signatures" num="8" />
                         {sections.footer && (
                             <div className="intake-section-body">
                                 <div className="form-group">
@@ -708,6 +779,14 @@ export default function TreatmentPlanEditorPage() {
                                     )}
                                 </div>
                             </div>
+                        )}
+
+                        {/* E18: addendum thread on treatment plans — for
+                            mid-cycle plan corrections (goal added at supervision,
+                            modified frequency, etc.) without breaking the
+                            sealed signed version. */}
+                        {plan && (
+                            <AddendumThread parentKind="treatment-plan" parentId={plan.id} />
                         )}
                     </div>
                 </div>

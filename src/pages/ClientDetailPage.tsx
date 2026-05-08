@@ -5,6 +5,7 @@ import { calculateAge, formatDateSafe } from '../utils/dates'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { Modal, EditClientModal, EmptyState, PageSkeleton, ConfirmDialog } from '../components/ui'
+import { ContactNotesTab, ServiceCategoryBadges } from '../components/shared'
 import { clientsApi, billingApi, notesApi, appointmentsApi, intakesApi } from '../api'
 import type { IntakeListItem } from '../api/intakes'
 
@@ -36,11 +37,12 @@ import {
     Receipt,
     CheckCircle,
     ClipboardText,
-    Eraser
+    Eraser,
+    ChatCircleText,
 } from '@phosphor-icons/react'
 
 // Tab type
-type TabType = 'profile' | 'insurance' | 'authorizations' | 'appointments' | 'notes' | 'intakes' | 'documents' | 'billing'
+type TabType = 'profile' | 'insurance' | 'authorizations' | 'appointments' | 'notes' | 'intakes' | 'contacts' | 'documents' | 'billing'
 
 // Format date — delegate to timezone-safe utility
 const formatDate = (date: string | undefined) => formatDateSafe(date)
@@ -378,11 +380,24 @@ export default function ClientDetailPage() {
                             {client.first_name[0]}{client.last_name[0]}
                         </div>
                         <div className="detail-info">
-                            <h1 className="detail-title">{client.first_name} {client.last_name}</h1>
+                            <h1 className="detail-title">
+                                {client.first_name} {client.last_name}
+                            </h1>
                             <p className="detail-meta">
                                 {client.gender || 'N/A'} · Age {calculateAge(client.date_of_birth)} · DOB {formatDate(client.date_of_birth)}
                                 {client.mrn && <> · <span className="mrn-badge">MRN: {client.mrn}</span></>}
                             </p>
+                            {/* E21: service categories under the meta line so the
+                                billing/admin reader sees Psych/OT/etc at a glance
+                                on the client header. */}
+                            {client.service_categories && client.service_categories.length > 0 && (
+                                <div style={{ marginTop: '0.375rem' }}>
+                                    <ServiceCategoryBadges
+                                        categories={client.service_categories}
+                                        long
+                                    />
+                                </div>
+                            )}
                         </div>
                     </div>
                     <div className="detail-header-actions">
@@ -417,6 +432,9 @@ export default function ClientDetailPage() {
                 </button>
                 <button className={`client-tab ${activeTab === 'intakes' ? 'active' : ''}`} onClick={() => setActiveTab('intakes')}>
                     <ClipboardText size={18} weight="duotone" /> Intakes
+                </button>
+                <button className={`client-tab ${activeTab === 'contacts' ? 'active' : ''}`} onClick={() => setActiveTab('contacts')}>
+                    <ChatCircleText size={18} weight="duotone" /> Contacts
                 </button>
                 <button className={`client-tab ${activeTab === 'documents' ? 'active' : ''}`} onClick={() => setActiveTab('documents')}>
                     <File size={18} weight="duotone" /> Documents
@@ -867,6 +885,11 @@ export default function ClientDetailPage() {
                     </div>
                 )}
 
+                {/* Contacts Tab — non-billable contact log (E19) */}
+                {activeTab === 'contacts' && id && (
+                    <ContactNotesTab clientId={id} />
+                )}
+
                 {/* Documents Tab */}
                 {activeTab === 'documents' && (
                     <div className="card">
@@ -1208,6 +1231,7 @@ export default function ClientDetailPage() {
                         insurance_primary_name: formData.insuranceName,
                         insurance_primary_id: formData.memberId,
                         insurance_primary_group: formData.groupNumber,
+                        service_categories: formData.serviceCategories,
                     })
                     toast.success('Client updated successfully')
                     setIsEditModalOpen(false)
@@ -1229,7 +1253,8 @@ export default function ClientDetailPage() {
                     emergencyContactPhone: client.emergency_contact_phone || '',
                     insuranceName: client.insurance_primary_name || '',
                     memberId: client.insurance_primary_id || '',
-                    groupNumber: client.insurance_primary_group || ''
+                    groupNumber: client.insurance_primary_group || '',
+                    serviceCategories: client.service_categories || [],
                 }}
             />
 

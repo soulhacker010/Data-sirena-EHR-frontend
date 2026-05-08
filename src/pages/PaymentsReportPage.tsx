@@ -5,6 +5,7 @@ import { DashboardLayout } from '../components/layout'
 import { PageSkeleton, EmptyState } from '../components/ui'
 import { reportsApi } from '../api'
 import type { PaymentsReport } from '../api/reports'
+import { formatDateSafe } from '../utils/dates'
 import {
     ArrowLeft,
     Download,
@@ -19,8 +20,7 @@ import {
 const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
 
-const formatDate = (date: string) =>
-    new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+const formatDate = (date: string) => formatDateSafe(date)
 
 const paymentMethodLabel = (value: string) => {
     if (value === 'credit_card' || value === 'stripe') return 'Credit Card'

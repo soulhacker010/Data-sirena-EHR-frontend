@@ -7,6 +7,7 @@ import Modal from '../components/ui/Modal'
 import { PageSkeleton } from '../components/ui'
 import { billingApi } from '../api'
 import type { Invoice, Payment } from '../types'
+import { formatDateSafe } from '../utils/dates'
 import {
     ArrowLeft,
     Printer,
@@ -252,7 +253,7 @@ export default function InvoiceDetailPage() {
                                 <tbody>
                                     {items.map(item => (
                                         <tr key={item.id}>
-                                            <td>{item.session_date ? new Date(item.session_date).toLocaleDateString() : 'â€”'}</td>
+                                            <td>{formatDateSafe(item.session_date)}</td>
                                             <td>
                                                 <div>
                                                     <strong>{item.service_code}</strong>

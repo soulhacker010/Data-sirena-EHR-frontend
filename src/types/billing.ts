@@ -59,6 +59,8 @@ export interface Claim {
     claim_number?: string
     payer_name: string
     payer_id?: string
+    /** True if payer_id maps to a 837P-capable payer in the Office Ally directory. */
+    payer_recognized?: boolean
     status: ClaimStatus
     billed_amount: number
     allowed_amount?: number
@@ -75,6 +77,18 @@ export interface Claim {
     session_date?: string
     created_at: string
     updated_at: string
+}
+
+export interface ClaimValidationIssue {
+    field: string
+    message: string
+    severity: 'error' | 'warning'
+}
+
+export interface ClaimValidationResult {
+    ok: boolean
+    errors: ClaimValidationIssue[]
+    warnings: ClaimValidationIssue[]
 }
 
 export interface CreateInvoicePayload {
@@ -134,4 +148,24 @@ export interface ClaimFilters {
     end_date?: string
     page?: number
     page_size?: number
+}
+
+export interface Payer {
+    id: string
+    name: string
+    payer_id: string
+    transaction_type: string
+    available: boolean
+    enrollment_required: boolean
+    supports_837p: boolean
+    supports_eligibility: boolean
+    supports_era: boolean
+    notes: string
+}
+
+export interface PayerSearchFilters {
+    search?: string
+    supports_837p?: boolean
+    available?: boolean
+    limit?: number
 }

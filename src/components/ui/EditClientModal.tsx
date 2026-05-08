@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import Modal from './Modal'
+import DateOfBirthInput from '../shared/DateOfBirthInput'
 import { clientSchema } from '../../lib/validationSchemas'
 import { calculateAge } from '../../utils/dates'
 import {
@@ -14,6 +15,8 @@ interface EditClientModalProps {
     onSubmit?: (clientData: ClientFormData) => Promise<void>
     clientData: ClientFormData | null
 }
+
+import { SERVICE_CATEGORY_OPTIONS, type ServiceCategory } from '../../types/client'
 
 export interface ClientFormData {
     id?: string
@@ -32,6 +35,7 @@ export interface ClientFormData {
     insuranceName: string
     memberId: string
     groupNumber: string
+    serviceCategories: ServiceCategory[]
 }
 
 const initialFormData: ClientFormData = {
@@ -49,7 +53,8 @@ const initialFormData: ClientFormData = {
     emergencyContactPhone: '',
     insuranceName: '',
     memberId: '',
-    groupNumber: ''
+    groupNumber: '',
+    serviceCategories: [],
 }
 
 export default function EditClientModal({ isOpen, onClose, onSubmit, clientData }: EditClientModalProps) {
@@ -144,14 +149,13 @@ export default function EditClientModal({ isOpen, onClose, onSubmit, clientData 
 
                         <div className="form-group">
                             <label className="form-label">Date of Birth *</label>
-                            <input
-                                type="date"
-                                name="dateOfBirth"
+                            <DateOfBirthInput
                                 value={formData.dateOfBirth}
-                                onChange={handleChange}
-                                min="1900-01-01"
-                                max={new Date().toISOString().split('T')[0]}
-                                className={`form-input-basic${errors.dateOfBirth ? ' input-error' : ''}`}
+                                onChange={(iso) =>
+                                    setFormData(prev => ({ ...prev, dateOfBirth: iso }))
+                                }
+                                hasError={Boolean(errors.dateOfBirth)}
+                                idPrefix="edit-client-dob"
                             />
                             {formData.dateOfBirth && (
                                 <span className="field-hint">Age: {calculateAge(formData.dateOfBirth)} years</span>
@@ -297,6 +301,45 @@ export default function EditClientModal({ isOpen, onClose, onSubmit, clientData 
                             />
                             {errors.emergencyContactPhone && <span className="field-error">{errors.emergencyContactPhone}</span>}
                         </div>
+                    </div>
+                </div>
+
+                {/* E21 — Service Categories */}
+                <div className="form-section">
+                    <div className="form-section-header">
+                        <User size={20} weight="duotone" />
+                        <h3>Service Categories</h3>
+                    </div>
+                    <div className="service-category-picker">
+                        {SERVICE_CATEGORY_OPTIONS.map(opt => {
+                            const checked = formData.serviceCategories.includes(opt.value)
+                            return (
+                                <label
+                                    key={opt.value}
+                                    className={`service-category-pick${checked ? ' checked' : ''}`}
+                                >
+                                    <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => {
+                                            setFormData(prev => ({
+                                                ...prev,
+                                                serviceCategories: checked
+                                                    ? prev.serviceCategories.filter(c => c !== opt.value)
+                                                    : [...prev.serviceCategories, opt.value],
+                                            }))
+                                        }}
+                                    />
+                                    <span
+                                        className="service-category-badge"
+                                        style={{ backgroundColor: opt.bg, color: opt.color }}
+                                    >
+                                        {opt.short}
+                                    </span>
+                                    <span>{opt.label}</span>
+                                </label>
+                            )
+                        })}
                     </div>
                 </div>
 

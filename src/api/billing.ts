@@ -11,6 +11,9 @@ import type {
     WriteOffPayload,
     InvoiceFilters,
     ClaimFilters,
+    Payer,
+    PayerSearchFilters,
+    ClaimValidationResult,
     PaginatedResponse,
 } from '../types'
 
@@ -83,6 +86,11 @@ export const billingApi = {
         return data
     },
 
+    validateClaim: async (id: string): Promise<ClaimValidationResult> => {
+        const { data } = await apiClient.get<ClaimValidationResult>(`/claims/${id}/validate/`)
+        return data
+    },
+
     resubmitClaim: async (id: string, notes?: string): Promise<Claim> => {
         const body = notes ? { resubmission_notes: notes } : {}
         const { data } = await apiClient.post<Claim>(`/claims/${id}/submit/`, body)
@@ -102,6 +110,12 @@ export const billingApi = {
 
     writeOffClaim: async (claimId: string, payload: WriteOffPayload): Promise<Claim> => {
         const { data } = await apiClient.post<Claim>(`/claims/${claimId}/write-off/`, payload)
+        return data
+    },
+
+    // ─── Payers (Office Ally payer directory) ─────────────────────────────
+    searchPayers: async (filters?: PayerSearchFilters): Promise<Payer[]> => {
+        const { data } = await apiClient.get<Payer[]>('/payers/', { params: filters })
         return data
     },
 

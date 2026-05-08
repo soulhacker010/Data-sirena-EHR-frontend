@@ -232,10 +232,14 @@ export default function DashboardPage() {
                     </div>
                     <ul className="incomplete-drafts-list">
                         {stats.incomplete_drafts.map(d => {
+                            // Editor routes are `/notes/:id/edit` (and same
+                            // pattern for intakes / treatment plans). Plain
+                            // `/notes/:id` would 404 because that pattern isn't
+                            // registered.
                             const route = (
-                                d.kind === 'session_notes' ? `/notes/${d.id}`
-                                : d.kind === 'intakes' ? `/intakes/${d.id}`
-                                : `/treatment-plans/${d.id}`
+                                d.kind === 'session_notes' ? `/notes/${d.id}/edit`
+                                : d.kind === 'intakes' ? `/intakes/${d.id}/edit`
+                                : `/treatment-plans/${d.id}/edit`
                             )
                             const kindLabel = (
                                 d.kind === 'session_notes' ? 'Session Note'

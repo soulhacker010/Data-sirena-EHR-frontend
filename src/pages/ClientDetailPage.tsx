@@ -861,7 +861,7 @@ export default function ClientDetailPage() {
                                             <tr
                                                 key={intake.id}
                                                 className="clickable-row"
-                                                onClick={() => navigate(`/intakes/${intake.id}`)}
+                                                onClick={() => navigate(`/intakes/${intake.id}/edit`)}
                                             >
                                                 <td>{formatDate(intake.assessment_date)}</td>
                                                 <td>{intake.provider_name || '—'}</td>

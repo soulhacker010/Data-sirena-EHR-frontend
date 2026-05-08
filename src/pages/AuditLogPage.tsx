@@ -6,7 +6,6 @@ import { EmptyState, PageSkeleton } from '../components/ui'
 import { auditApi } from '../api'
 import type { AuditLog } from '../types'
 import {
-    ClockCounterClockwise,
     MagnifyingGlass,
     DownloadSimple,
     User,

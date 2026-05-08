@@ -125,7 +125,7 @@ export default function NoteEditorPage() {
                         if (existingForAppt.results.length > 0) {
                             // A note already exists — redirect to it. `replace`
                             // so the back button doesn't bounce them back here.
-                            navigate(`/notes/${existingForAppt.results[0].id}`, { replace: true })
+                            navigate(`/notes/${existingForAppt.results[0].id}/edit`, { replace: true })
                             return
                         }
                     } catch {
@@ -134,7 +134,12 @@ export default function NoteEditorPage() {
 
                     try {
                         const appt = await appointmentsApi.getById(appointmentIdParam)
-                        setSelectedClientId(appt.client.id)
+                        // Non-session events (staff meeting, etc.) have no
+                        // client and shouldn't be the source of a clinical
+                        // note in the first place — guard against the null.
+                        if (appt.client) {
+                            setSelectedClientId(appt.client.id)
+                        }
                         if (appt.service_code) setServiceCode(appt.service_code)
                     } catch {
                         // Appointment fetch failed — provider can still pick
@@ -280,7 +285,7 @@ export default function NoteEditorPage() {
                 setNote(created)
                 toast.success('Note created')
                 // Navigate to the edit URL so subsequent saves update
-                navigate(`/notes/${created.id}`, { replace: true })
+                navigate(`/notes/${created.id}/edit`, { replace: true })
             } else if (note) {
                 // Update existing note
                 const updated = await notesApi.update(note.id, {

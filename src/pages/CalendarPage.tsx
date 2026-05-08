@@ -482,7 +482,9 @@ export default function CalendarPage() {
             isRecurring: false,
             recurringPattern: 'weekly',
             recurringEndDate: '',
-            isTelehealth: false
+            isTelehealth: false,
+            eventType: 'client_session',
+            title: '',
         })
         setIsScheduleModalOpen(true)
     }
@@ -494,7 +496,7 @@ export default function CalendarPage() {
         const props = clickInfo.event.extendedProps as { __kind?: 'appointment' | 'intake' } & Record<string, unknown>
         if (props.__kind === 'intake') {
             const intake = props.intake as IntakeListItem
-            navigate(`/intakes/${intake.id}`)
+            navigate(`/intakes/${intake.id}/edit`)
             return
         }
         const apt = props as unknown as Appointment
@@ -565,7 +567,9 @@ export default function CalendarPage() {
             isRecurring: false,
             recurringPattern: 'weekly',
             recurringEndDate: '',
-            isTelehealth: false
+            isTelehealth: false,
+            eventType: 'client_session',
+            title: '',
         })
         setIsScheduleModalOpen(true)
     }
@@ -575,7 +579,9 @@ export default function CalendarPage() {
         if (!selectedAppointment) return
         setIsEditMode(true)
         setFormData({
-            clientId: selectedAppointment.client.id,
+            // E31 Half A: client may be null on staff/personal events. Default
+            // to '' so the controlled <select> doesn't break.
+            clientId: selectedAppointment.client?.id || '',
             providerId: selectedAppointment.provider.id,
             serviceCode: selectedAppointment.service_code || '97153',
             modifiers: selectedAppointment.modifiers || '',
@@ -588,7 +594,9 @@ export default function CalendarPage() {
             isRecurring: selectedAppointment.is_recurring,
             recurringPattern: selectedAppointment.recurrence_pattern?.frequency || 'weekly',
             recurringEndDate: selectedAppointment.recurrence_pattern?.end_date || '',
-            isTelehealth: selectedAppointment.modifiers?.includes('-95') || false
+            isTelehealth: selectedAppointment.modifiers?.includes('-95') || false,
+            eventType: selectedAppointment.event_type || 'client_session',
+            title: selectedAppointment.title || '',
         })
         setIsViewModalOpen(false)
         setIsScheduleModalOpen(true)

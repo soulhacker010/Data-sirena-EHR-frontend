@@ -389,7 +389,9 @@ export default function CalendarPage() {
 
     const calendarEvents = [...appointmentEvents, ...intakeEvents]
 
-    // Compact event renderer — stays readable even when columns are narrow
+    // Event renderer — bumped up sizes (E30) so events read at a glance,
+    // not by squinting. Time row + client name + service code, each on its
+    // own line. Padding raised so text doesn't kiss the pill border.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const renderEventContent = (eventInfo: any) => {
         const props = eventInfo.event.extendedProps as { __kind?: 'appointment' | 'intake' } & Record<string, unknown>
@@ -398,11 +400,11 @@ export default function CalendarPage() {
         if (props.__kind === 'intake') {
             const intake = props.intake as IntakeListItem
             return (
-                <div style={{ padding: '2px 4px', overflow: 'hidden', lineHeight: 1.3 }}>
-                    <div style={{ fontSize: '0.62rem', opacity: 0.85, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                <div style={{ padding: '4px 6px', overflow: 'hidden', lineHeight: 1.3 }}>
+                    <div style={{ fontSize: '0.7rem', opacity: 0.9, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                         Intake · {intake.status === 'co_signed' ? 'Co-signed' : 'Signed'}
                     </div>
-                    <div style={{ fontSize: '0.72rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {intake.client_name}
                     </div>
                 </div>
@@ -413,12 +415,12 @@ export default function CalendarPage() {
         const start = new Date(apt.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
         const isCancelled = apt.status === 'cancelled'
         return (
-            <div style={{ padding: '2px 4px', overflow: 'hidden', lineHeight: 1.3 }}>
-                <div style={{ fontSize: '0.68rem', opacity: 0.85, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div style={{ padding: '4px 6px', overflow: 'hidden', lineHeight: 1.3 }}>
+                <div style={{ fontSize: '0.78rem', opacity: 0.9, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {start}
                 </div>
                 <div style={{
-                    fontSize: '0.72rem',
+                    fontSize: '0.85rem',
                     fontWeight: 700,
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
@@ -428,7 +430,7 @@ export default function CalendarPage() {
                     {aptClientName(apt)}
                 </div>
                 {apt.service_code && (
-                    <div style={{ fontSize: '0.62rem', opacity: 0.75, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: '0.7rem', opacity: 0.8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {apt.service_code}
                     </div>
                 )}
@@ -972,7 +974,18 @@ export default function CalendarPage() {
                     select={handleDateSelect}
                     eventClick={handleEventClick}
                     eventContent={renderEventContent}
-                    eventMinHeight={36}
+                    // E30: clunky-fix bundle.
+                    // - slotEventOverlap=false: concurrent events split into
+                    //   clean side-by-side columns instead of one sitting on
+                    //   top of the other (Dr. Joe couldn't read overlapped
+                    //   appointments). Each event still gets equal width within
+                    //   its slot column.
+                    // - eventMinHeight 36 -> 56: events feel substantial enough
+                    //   to read without leaning in; matches the 30-min slot
+                    //   height so a single 30-min session doesn't render as a
+                    //   sliver.
+                    slotEventOverlap={false}
+                    eventMinHeight={56}
                     height="auto"
                     slotMinTime="07:00:00"
                     slotMaxTime="20:00:00"

@@ -704,9 +704,10 @@ export default function NoteEditorPage() {
                         {!note?.is_locked && (
                             <button
                                 type="button"
-                                className="btn-icon-sm"
+                                className="btn-secondary btn-sm"
                                 onClick={handleCopyFromLast}
                                 title="Copy data from the last signed note for this client"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', whiteSpace: 'nowrap' }}
                             >
                                 <Copy size={16} /> Copy from Last
                             </button>
@@ -859,8 +860,9 @@ export default function NoteEditorPage() {
                         <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
                             <button
                                 type="button"
-                                className="btn-icon-sm"
+                                className="btn-secondary btn-sm"
                                 onClick={() => navigate(`/calendar?client=${note.client_id}`)}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem', whiteSpace: 'nowrap' }}
                             >
                                 <CalendarPlus size={16} /> Schedule Next Session
                             </button>

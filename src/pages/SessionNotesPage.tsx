@@ -295,23 +295,14 @@ export default function SessionNotesPage() {
         setIsViewModalOpen(true)
     }
 
-    const handleEditNote = async (note: SessionNote) => {
-        const fullNote = await loadNoteDetail(note)
-        if (!fullNote) return
-        const nd = fullNote.note_data || {}
-        setFormData({
-            templateId: fullNote.template_id || 'blank',
-            clientId: fullNote.client_id,
-            sessionDate: fullNote.session_date || '',
-            cptCode: fullNote.service_code || '97153',
-            objectives: (nd.objectives as string) || '',
-            interventions: (nd.interventions as string) || '',
-            clientResponse: (nd.client_response as string) || '',
-            notes: (nd.notes as string) || ''
-        })
-        setLastSaved(null)
+    const handleEditNote = (note: SessionNote) => {
+        // B14 (second half): edit goes to the SAME full clinical editor as
+        // create — `/notes/:id/edit` shows MSE, Risk, ABA, InterventionsChecklist,
+        // Medical Necessity, Addendums, etc. The old inline modal only had
+        // 4 SOAP textareas, which is what Dr. Joe noticed was different
+        // between "edit" and "new".
         setIsViewModalOpen(false)
-        setIsNoteEditorOpen(true)
+        navigate(`/notes/${note.id}/edit`)
     }
 
     const handleDeleteClick = (note: SessionNote) => {

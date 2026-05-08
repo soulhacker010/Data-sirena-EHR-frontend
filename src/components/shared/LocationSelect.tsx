@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CaretDown, MapPin, SpinnerGap } from '@phosphor-icons/react'
+import { CaretDown, MapPin, SpinnerGap, VideoCamera, Buildings } from '@phosphor-icons/react'
 import { lookupsApi } from '../../api'
 import type { LocationOption } from '../../api/lookups'
 
@@ -23,10 +23,14 @@ interface LocationSelectProps {
     showAddress?: boolean
 }
 
-const getLocationIcon = (location: LocationOption) => {
-    if (location.is_telehealth) return '💻'
-    return '🏥'
-}
+/** Icon for a location row — VideoCamera for telehealth, Buildings for a
+ *  physical clinic. Returned as a JSX element rather than an emoji because
+ *  this is production clinical software (no emojis in the UI). */
+const LocationIcon = ({ location, size = 16 }: { location: LocationOption; size?: number }) => (
+    location.is_telehealth
+        ? <VideoCamera size={size} weight="duotone" />
+        : <Buildings size={size} weight="duotone" />
+)
 
 export default function LocationSelect({
     value,
@@ -89,7 +93,7 @@ export default function LocationSelect({
                 ) : selectedLocation ? (
                     <div className="location-select-value">
                         <span className="location-select-icon-emoji">
-                            {getLocationIcon(selectedLocation)}
+                            <LocationIcon location={selectedLocation} />
                         </span>
                         <div className="location-select-info">
                             <span className="location-select-name">{selectedLocation.name}</span>
@@ -132,7 +136,7 @@ export default function LocationSelect({
                             onClick={() => handleSelect(location)}
                         >
                             <span className="location-option-icon">
-                                {getLocationIcon(location)}
+                                <LocationIcon location={location} />
                             </span>
                             <div className="location-select-option-info">
                                 <span className="location-select-option-name">{location.name}</span>

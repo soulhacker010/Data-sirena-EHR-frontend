@@ -24,7 +24,8 @@ import {
     CaretRight,
     FunnelSimple,
     CaretDown,
-    ArrowsClockwise
+    ArrowsClockwise,
+    CalendarBlank,
 } from '@phosphor-icons/react'
 import { Modal, ConfirmDialog } from '../components/ui'
 import { cptCodes } from '../constants/cptCodes'
@@ -1262,7 +1263,7 @@ export default function CalendarPage() {
                                 </div>
                                 {formData.date && formData.recurringEndDate && (
                                     <div className="recurring-preview">
-                                        <span className="recurring-preview-icon">📅</span>
+                                        <CalendarBlank size={18} weight="duotone" className="recurring-preview-icon" />
                                         <span>
                                             {(() => {
                                                 const start = new Date(formData.date)

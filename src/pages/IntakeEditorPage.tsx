@@ -1022,14 +1022,20 @@ export default function IntakeEditorPage() {
                                 <div className="intake-preview-sig-box">
                                     <p className="intake-preview-label">Provider Signature</p>
                                     {intake.signed_at
-                                        ? <p className="intake-preview-value">✓ {intake.provider_name} — {new Date(intake.signed_at).toLocaleDateString()}</p>
+                                        ? <p className="intake-preview-value" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+                                            <CheckCircle size={16} weight="fill" />
+                                            {intake.provider_name} — {new Date(intake.signed_at).toLocaleDateString()}
+                                        </p>
                                         : <p className="intake-preview-value" style={{ color: '#94a3b8' }}>Not yet signed</p>
                                     }
                                 </div>
                                 <div className="intake-preview-sig-box">
                                     <p className="intake-preview-label">Client Signature</p>
                                     {intake.client_signed_at
-                                        ? <p className="intake-preview-value">✓ {new Date(intake.client_signed_at).toLocaleDateString()}</p>
+                                        ? <p className="intake-preview-value" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.375rem' }}>
+                                            <CheckCircle size={16} weight="fill" />
+                                            {new Date(intake.client_signed_at).toLocaleDateString()}
+                                        </p>
                                         : <p className="intake-preview-value" style={{ color: '#94a3b8' }}>Not yet signed</p>
                                     }
                                 </div>

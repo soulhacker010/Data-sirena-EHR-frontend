@@ -1,5 +1,5 @@
 import apiClient from './client'
-import type { LoginRequest, LoginResponse, AuthUser, ChangePasswordRequest, TokenRefreshResponse } from '../types'
+import type { LoginRequest, LoginResponse, AuthUser, User, ChangePasswordRequest, TokenRefreshResponse } from '../types'
 
 export const authApi = {
     login: async (payload: LoginRequest): Promise<LoginResponse> => {
@@ -22,6 +22,14 @@ export const authApi = {
 
     getMe: async (): Promise<AuthUser> => {
         const { data } = await apiClient.get<AuthUser>('/auth/me/')
+        return data
+    },
+
+    /** Same endpoint as getMe, typed as the full User shape so callers can
+     *  read fields (npi, credentials, licenses, ein) that AuthContext
+     *  doesn't propagate. Used by the Settings page's read-only profile view. */
+    getProfile: async (): Promise<User> => {
+        const { data } = await apiClient.get<User>('/auth/me/')
         return data
     },
 

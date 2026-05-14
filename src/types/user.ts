@@ -24,6 +24,10 @@ export interface User {
     credentials?: string
     /** E5: provider's individual (Type 1) NPI. Empty for non-clinical staff. */
     npi?: string
+    /** 9-digit EIN, digits only. Used when a contractor bills under their own
+     *  entity instead of the practice EIN. (Dr. Joe 2026-05-12 feedback —
+     *  SSN intentionally not stored; payroll lives outside the EHR.) */
+    ein?: string
     is_active: boolean
     is_supervisor: boolean
     last_login?: string

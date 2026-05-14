@@ -15,6 +15,9 @@ export interface CreateUserPayload {
     credentials?: string
     /** E5: provider's individual (Type 1) NPI; 10 digits, Luhn-validated server-side. */
     npi?: string
+    /** Per-user EIN (9 digits, digits only). Optional — left blank for W-2 staff
+     *  who bill under the practice EIN. (Dr. Joe 2026-05-12 feedback.) */
+    ein?: string
 }
 
 export interface UpdateUserPayload {
@@ -27,6 +30,7 @@ export interface UpdateUserPayload {
     licenses?: string[]
     credentials?: string
     npi?: string
+    ein?: string
 }
 
 export const usersApi = {

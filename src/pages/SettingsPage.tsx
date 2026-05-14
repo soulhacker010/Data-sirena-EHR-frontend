@@ -42,13 +42,19 @@ export default function SettingsPage() {
 
     const isAdmin = user?.role === 'admin'
 
-    // Profile state — from auth context
+    // Profile state — from auth context + /auth/me/ for the admin-managed
+    // fields (npi, credentials, licenses, ein) that AuthContext doesn't carry.
     const [profile, setProfile] = useState({
         firstName: '',
         lastName: '',
         email: '',
         phone: '',
-        role: ''
+        role: '',
+        // Admin-managed (read-only on this page)
+        credentials: '',
+        licenses: [] as string[],
+        npi: '',
+        ein: '',
     })
     const [isProfileSaving, setIsProfileSaving] = useState(false)
 
@@ -89,15 +95,30 @@ export default function SettingsPage() {
         const load = async () => {
             setIsLoading(true)
             try {
-                // Profile from auth context
+                // Profile from auth context (basics) + /auth/me/ for the
+                // admin-managed fields. AuthContext only carries the slim
+                // AuthUser shape; the full User has npi/credentials/licenses/ein.
                 if (user) {
-                    setProfile({
+                    setProfile(prev => ({
+                        ...prev,
                         firstName: user.first_name || '',
                         lastName: user.last_name || '',
                         email: user.email || '',
                         phone: user.phone || '',
-                        role: user.role || ''
-                    })
+                        role: user.role || '',
+                    }))
+                }
+                try {
+                    const me = await authApi.getProfile()
+                    setProfile(prev => ({
+                        ...prev,
+                        credentials: me.credentials || '',
+                        licenses: me.licenses || [],
+                        npi: me.npi || '',
+                        ein: me.ein || '',
+                    }))
+                } catch {
+                    // Non-fatal — the page still renders the editable basics.
                 }
 
                 // Organization settings
@@ -360,6 +381,58 @@ export default function SettingsPage() {
                                     {isProfileSaving ? 'Saving...' : 'Save Profile'}
                                 </button>
                             </div>
+
+                            {/* ─── Provider IDs (read-only, admin-managed) ─── */}
+                            {/* Only clinical roles need NPI / EIN — front_desk and biller
+                                bill nothing under their own identity. Hide the section
+                                for them so the page doesn't show useless empty rows. */}
+                            {['admin', 'supervisor', 'clinician'].includes(profile.role) && (
+                            <div style={{ marginTop: '2rem', paddingTop: '1.5rem', borderTop: '1px solid var(--color-border, #e5e7eb)' }}>
+                                <h3 className="settings-section-title" style={{ fontSize: '1rem' }}>Provider IDs</h3>
+                                <p className="settings-section-desc">
+                                    These billing-critical fields can only be updated by an administrator. If anything below is missing or wrong, ask your admin to fix it from User Management.
+                                </p>
+
+                                <div className="form-grid">
+                                    <div className="form-group">
+                                        <label className="form-label">Credentials</label>
+                                        <input
+                                            type="text"
+                                            className="form-input-basic"
+                                            value={profile.credentials || '—'}
+                                            disabled
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">State Licenses</label>
+                                        <input
+                                            type="text"
+                                            className="form-input-basic"
+                                            value={(profile.licenses || []).join(', ') || '—'}
+                                            disabled
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">Individual NPI</label>
+                                        <input
+                                            type="text"
+                                            className="form-input-basic"
+                                            value={profile.npi || '—'}
+                                            disabled
+                                        />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">EIN</label>
+                                        <input
+                                            type="text"
+                                            className="form-input-basic"
+                                            value={profile.ein || '—'}
+                                            disabled
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                            )}
                         </div>
                     )}
 

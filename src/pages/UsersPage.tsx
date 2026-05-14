@@ -55,6 +55,7 @@ export default function UsersPage() {
         credentials: '',
         licenses: '',
         npi: '',
+        ein: '',
     })
     const [formErrors, setFormErrors] = useState<Record<string, string>>({})
     const [isSaving, setIsSaving] = useState(false)
@@ -143,6 +144,7 @@ export default function UsersPage() {
                 credentials: formData.credentials || undefined,
                 licenses: parsedLicenses.length ? parsedLicenses : undefined,
                 npi: formData.npi.trim() || undefined,
+                ein: formData.ein.trim() || undefined,
             })
             toast.success(`${formData.firstName} ${formData.lastName} has been added`)
             setIsAddModalOpen(false)
@@ -174,6 +176,7 @@ export default function UsersPage() {
                 credentials: formData.credentials,
                 licenses: parsedLicenses,
                 npi: formData.npi.trim(),
+                ein: formData.ein.trim(),
             })
             toast.success(`${formData.firstName} ${formData.lastName} has been updated`)
             setIsEditModalOpen(false)
@@ -237,6 +240,7 @@ export default function UsersPage() {
             credentials: user.credentials || '',
             licenses: (user.licenses || []).join(', '),
             npi: user.npi || '',
+            ein: user.ein || '',
         })
         setFormErrors({})
         setIsEditModalOpen(true)
@@ -253,6 +257,7 @@ export default function UsersPage() {
             credentials: '',
             licenses: '',
             npi: '',
+            ein: '',
         })
         setFormErrors({})
     }
@@ -523,6 +528,20 @@ export default function UsersPage() {
                         />
                         <p className="form-hint">Type 1 (individual) NPI used as the rendering provider on claims. Leave blank for non-clinical staff. Validated against the CMS Luhn check on save.</p>
                     </div>
+                    <div className="form-group">
+                        <label className="form-label">EIN (optional)</label>
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="\d{9}"
+                            maxLength={9}
+                            className="form-input"
+                            placeholder="9 digits (e.g., 123456789)"
+                            value={formData.ein}
+                            onChange={(e) => handleFieldChange('ein', e.target.value.replace(/\D/g, '').slice(0, 9))}
+                        />
+                        <p className="form-hint">Only fill in if this provider bills under their own EIN (1099 contractor with their own entity). Leave blank for W-2 staff — they bill under the practice EIN.</p>
+                    </div>
                     <div className="form-actions">
                         <button className="btn-secondary" onClick={() => { setIsAddModalOpen(false); resetForm() }}>Cancel</button>
                         <button className="btn-primary" onClick={handleAddUser}>
@@ -624,6 +643,34 @@ export default function UsersPage() {
                             onChange={(e) => handleFieldChange('licenses', e.target.value)}
                         />
                         <p className="form-hint">Comma-separated state license numbers.</p>
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">Individual NPI</label>
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="\d{10}"
+                            maxLength={10}
+                            className="form-input"
+                            placeholder="10-digit NPI (e.g., 1659841096)"
+                            value={formData.npi}
+                            onChange={(e) => handleFieldChange('npi', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        />
+                        <p className="form-hint">Type 1 (individual) NPI used as the rendering provider on claims. Leave blank for non-clinical staff. Validated against the CMS Luhn check on save.</p>
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">EIN (optional)</label>
+                        <input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="\d{9}"
+                            maxLength={9}
+                            className="form-input"
+                            placeholder="9 digits (e.g., 123456789)"
+                            value={formData.ein}
+                            onChange={(e) => handleFieldChange('ein', e.target.value.replace(/\D/g, '').slice(0, 9))}
+                        />
+                        <p className="form-hint">Only fill in if this provider bills under their own EIN (1099 contractor with their own entity). Leave blank for W-2 staff — they bill under the practice EIN.</p>
                     </div>
                     <div className="form-actions">
                         <button className="btn-secondary" onClick={() => { setIsEditModalOpen(false); setEditingUser(null); resetForm() }}>Cancel</button>

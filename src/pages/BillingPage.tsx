@@ -1622,7 +1622,7 @@ export default function BillingPage() {
 
                     <div className="claim-status-note">
                         <strong>Creates an internal claim record.</strong>
-                        <span>You can submit it afterward to mark it as sent. Clearinghouse delivery is not automated here yet.</span>
+                        <span>Click <em>Submit</em> on the claim row afterward to send it to Office Ally — the system generates the X12 837P file and uploads it to OA&apos;s SFTP automatically.</span>
                     </div>
 
                     <div className="form-group">

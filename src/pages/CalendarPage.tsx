@@ -57,7 +57,13 @@ const getServiceColor = (serviceCode?: string): string => {
     return match?.color || '#6B7280'
 }
 
-// Combined color: service type base color + status-based style
+// Combined color: status overrides service-type color when the appointment
+// is in a status that billing/front-desk needs to spot from across the room
+// (no-show, cancelled). Otherwise fall through to the CPT color palette.
+// Dr. Joe 2026-05-27 feedback: previously no-show just dimmed the base color,
+// leaving the block visually identical to a normal session — staff had to
+// click into each event to see the status. Now no-show is a solid orange
+// block with a "NO-SHOW" badge so it screams from the calendar grid.
 const getEventColor = (apt: Appointment): { bg: string; border: string; opacity: number } => {
     // E31 Half A: non-client events render gray so they read as "blocks" rather
     // than billable sessions. Distinct enough that providers don't confuse them.
@@ -66,10 +72,10 @@ const getEventColor = (apt: Appointment): { bg: string; border: string; opacity:
     }
     const base = getServiceColor(apt.service_code)
     switch (apt.status) {
-        case 'cancelled': return { bg: '#E5E7EB', border: '#9CA3AF', opacity: 0.5 }
-        case 'no_show': return { bg: base, border: '#D97706', opacity: 0.6 }
-        case 'attended': return { bg: base, border: base, opacity: 0.85 }
-        default: return { bg: base, border: base, opacity: 1 }
+        case 'cancelled': return { bg: '#E5E7EB', border: '#9CA3AF', opacity: 0.55 }
+        case 'no_show':   return { bg: '#F97316', border: '#C2410C', opacity: 1 }
+        case 'attended':  return { bg: base, border: base, opacity: 0.85 }
+        default:          return { bg: base, border: base, opacity: 1 }
     }
 }
 
@@ -415,8 +421,35 @@ export default function CalendarPage() {
         const apt = props as unknown as Appointment
         const start = new Date(apt.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
         const isCancelled = apt.status === 'cancelled'
+        const isNoShow = apt.status === 'no_show'
+        // Status badge — visible inline on the event block so billing /
+        // front-desk can spot no-shows and cancellations while scanning the
+        // grid, without having to click each one open (Dr. Joe 2026-05-27).
+        const statusBadge = isNoShow
+            ? { label: 'NO-SHOW', color: '#fff', bg: 'rgba(0,0,0,0.25)' }
+            : isCancelled
+                ? { label: 'CANCELLED', color: '#374151', bg: 'rgba(255,255,255,0.7)' }
+                : null
         return (
-            <div style={{ padding: '4px 6px', overflow: 'hidden', lineHeight: 1.3 }}>
+            <div style={{ padding: '4px 6px', overflow: 'hidden', lineHeight: 1.3, position: 'relative' }}>
+                {statusBadge && (
+                    <div style={{
+                        position: 'absolute',
+                        top: 3,
+                        right: 4,
+                        fontSize: '0.6rem',
+                        fontWeight: 800,
+                        letterSpacing: '0.04em',
+                        padding: '1px 5px',
+                        borderRadius: 3,
+                        color: statusBadge.color,
+                        background: statusBadge.bg,
+                        textTransform: 'uppercase',
+                        lineHeight: 1.3,
+                    }}>
+                        {statusBadge.label}
+                    </div>
+                )}
                 <div style={{ fontSize: '0.78rem', opacity: 0.9, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {start}
                 </div>

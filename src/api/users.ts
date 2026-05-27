@@ -55,8 +55,14 @@ export const usersApi = {
         return data
     },
 
+    /**
+     * Partial update. Uses PATCH on purpose so callers can pass just the
+     * fields they want to change (e.g. {is_active: false} from the deactivate
+     * button) without needing to send the user's full record. PUT would
+     * require every model-required field — without them DRF returns 400.
+     */
     update: async (id: string, payload: UpdateUserPayload): Promise<User> => {
-        const { data } = await apiClient.put<User>(`/auth/users/${id}/`, payload)
+        const { data } = await apiClient.patch<User>(`/auth/users/${id}/`, payload)
         return data
     },
 

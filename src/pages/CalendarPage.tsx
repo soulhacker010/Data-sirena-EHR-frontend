@@ -420,6 +420,7 @@ export default function CalendarPage() {
 
         const apt = props as unknown as Appointment
         const start = new Date(apt.start_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+        const end = new Date(apt.end_time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
         const isCancelled = apt.status === 'cancelled'
         const isNoShow = apt.status === 'no_show'
         // Status badge — visible inline on the event block so billing /
@@ -430,17 +431,32 @@ export default function CalendarPage() {
             : isCancelled
                 ? { label: 'CANCELLED', color: '#374151', bg: 'rgba(255,255,255,0.7)' }
                 : null
+        // Native browser tooltip — shows full event info when the user hovers
+        // a compressed event block (3+ concurrent events at the same time slot
+        // squeeze each column narrow and truncate the text). FullCalendar's
+        // timeGrid view has no built-in "+N more" overflow like the month
+        // view does; hover tooltip is the cleanest workaround until we build
+        // custom overflow logic. Dr. Joe 2026-05-27 feedback (image 46).
+        const tooltip = [
+            `${start} – ${end}`,
+            aptClientName(apt),
+            apt.service_code,
+            apt.status !== 'scheduled' ? apt.status.replace('_', ' ').toUpperCase() : '',
+        ].filter(Boolean).join(' · ')
         return (
-            <div style={{ padding: '4px 6px', overflow: 'hidden', lineHeight: 1.3, position: 'relative' }}>
+            <div
+                title={tooltip}
+                style={{ padding: '3px 5px', overflow: 'hidden', lineHeight: 1.25, position: 'relative' }}
+            >
                 {statusBadge && (
                     <div style={{
                         position: 'absolute',
-                        top: 3,
-                        right: 4,
-                        fontSize: '0.6rem',
+                        top: 2,
+                        right: 3,
+                        fontSize: '0.58rem',
                         fontWeight: 800,
                         letterSpacing: '0.04em',
-                        padding: '1px 5px',
+                        padding: '1px 4px',
                         borderRadius: 3,
                         color: statusBadge.color,
                         background: statusBadge.bg,
@@ -450,11 +466,11 @@ export default function CalendarPage() {
                         {statusBadge.label}
                     </div>
                 )}
-                <div style={{ fontSize: '0.78rem', opacity: 0.9, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: '0.72rem', opacity: 0.9, fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {start}
                 </div>
                 <div style={{
-                    fontSize: '0.85rem',
+                    fontSize: '0.82rem',
                     fontWeight: 700,
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
@@ -464,7 +480,7 @@ export default function CalendarPage() {
                     {aptClientName(apt)}
                 </div>
                 {apt.service_code && (
-                    <div style={{ fontSize: '0.7rem', opacity: 0.8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: '0.68rem', opacity: 0.8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {apt.service_code}
                     </div>
                 )}

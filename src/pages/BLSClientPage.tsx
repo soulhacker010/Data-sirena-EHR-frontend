@@ -61,18 +61,47 @@ type ClientUIState =
 const WARNING_ACK_KEY = 'bls_client_warning_ack'
 
 export default function BLSClientPage() {
-    const { token } = useParams<{ token: string }>()
+    // The URL param is named `token` for backwards compat with old long-token
+    // links — semantically it can be either a 6-char short code OR the full
+    // signed token. Short codes get resolved to a fresh signed token via the
+    // /sessions/resolve/ endpoint before the session component opens.
+    const { token: urlParam } = useParams<{ token: string }>()
 
-    // ─── Token validation ───────────────────────────────────────────────────
-    // Mock: any 24-char [a-z0-9] string. In prod this hits a verify endpoint
-    // that checks the cryptographic signature + expiry server-side.
-    const tokenValid = useMemo(() => isValidTokenFormat(token), [token])
+    const isShortCode = useMemo(() => isShortCodeFormat(urlParam), [urlParam])
+    const isLongToken = useMemo(() => isValidTokenFormat(urlParam), [urlParam])
 
-    if (!tokenValid) {
+    // Resolved token — for short-code links this holds the result of
+    // /sessions/resolve/. For long-token links this is the URL param verbatim.
+    const [resolvedToken, setResolvedToken] = useState<string | null>(null)
+    const [resolveFailed, setResolveFailed] = useState(false)
+
+    useEffect(() => {
+        let cancelled = false
+        if (!urlParam) return
+        if (isShortCode) {
+            blsApi.resolveShortCode(urlParam).then(result => {
+                if (cancelled) return
+                if (result && result.token) {
+                    setResolvedToken(result.token)
+                } else {
+                    setResolveFailed(true)
+                }
+            })
+            return () => { cancelled = true }
+        }
+        if (isLongToken) {
+            setResolvedToken(urlParam)
+        }
+        return () => { cancelled = true }
+    }, [urlParam, isShortCode, isLongToken])
+
+    if (!urlParam || (!isShortCode && !isLongToken) || resolveFailed) {
         return <InvalidTokenScreen />
     }
-
-    return <BLSClientSession token={token!} />
+    if (!resolvedToken) {
+        return <ResolvingScreen />
+    }
+    return <BLSClientSession token={resolvedToken} />
 }
 
 /**
@@ -272,6 +301,17 @@ function isValidTokenFormat(token: string | undefined): boolean {
     return /^[A-Za-z0-9_\-:.]+$/.test(token)
 }
 
+/**
+ * Short codes are 6 chars from Crockford Base32 minus I, L, O, U (kept in
+ * sync with apps/bls/tokens.py:SHORT_CODE_ALPHABET on the backend). Accept
+ * both upper and lower case — the resolve endpoint normalises.
+ */
+const SHORT_CODE_RE = /^[0-9A-HJ-NP-TV-Za-hj-np-tv-z]{6}$/
+
+function isShortCodeFormat(value: string | undefined): boolean {
+    return !!value && SHORT_CODE_RE.test(value)
+}
+
 // ─── Canvas ─────────────────────────────────────────────────────────────────
 
 interface BLSCanvasProps {
@@ -460,6 +500,26 @@ function BLSCanvas({ config, runState, startedAt, showWaitingOverlay, audioFaile
 }
 
 // ─── Screens ────────────────────────────────────────────────────────────────
+
+function ResolvingScreen() {
+    // Brief flash while we exchange the short code for a real token.
+    // Same chrome as the other message screens for visual continuity.
+    return (
+        <div style={messageScreenStyle('#F8FAFC')}>
+            <div style={messageBoxStyle}>
+                <h1 style={{ fontSize: 18, fontWeight: 700, margin: '0 0 8px', color: '#0F172A' }}>
+                    Connecting…
+                </h1>
+                <p style={{ fontSize: 13, color: '#475569', margin: '0 0 14px', lineHeight: 1.55 }}>
+                    Looking up your session.
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <SpinnerDots />
+                </div>
+            </div>
+        </div>
+    )
+}
 
 function InvalidTokenScreen() {
     return (

@@ -26,6 +26,7 @@ const API_BASE_URL = (import.meta as { env?: { VITE_API_URL?: string } }).env?.V
 export interface BLSCreateSessionResponse {
     session_id: string
     token: string
+    short_code?: string | null
     invite_url: string
     expires_in_seconds: number
 }
@@ -34,6 +35,13 @@ export interface BLSVerifyTokenResponse {
     valid: boolean
     session_id?: string
     status?: 'created' | 'waiting_for_client' | 'active' | 'paused' | 'ended' | 'abandoned'
+}
+
+export interface BLSResolveShortCodeResponse {
+    session_id: string
+    token: string
+    status: 'created' | 'waiting_for_client' | 'active' | 'paused' | 'ended' | 'abandoned'
+    expires_in_seconds: number
 }
 
 export interface BLSEndSessionPayload {
@@ -118,6 +126,25 @@ export const blsApi = {
             // tokens — if we land in the catch, something else went wrong
             // (network, CORS). Treat as invalid so the UX is consistent.
             return { valid: false }
+        }
+    },
+
+    /**
+     * Resolve a 6-char short code to the full signed token. The client view
+     * calls this when the URL looks like /bls/c/AB7K9Q instead of
+     * /bls/c/<long-token>. Returns null on any non-2xx, including the
+     * intentional 404 the backend returns for unknown/expired codes — the
+     * UX is the same: show the "link not active" screen.
+     */
+    resolveShortCode: async (code: string): Promise<BLSResolveShortCodeResponse | null> => {
+        try {
+            const { data } = await publicClient.get<BLSResolveShortCodeResponse>(
+                '/bls/sessions/resolve/',
+                { params: { code } },
+            )
+            return data
+        } catch {
+            return null
         }
     },
 

@@ -13,7 +13,8 @@ import {
     Gear,
     SignOut,
     UsersThree,
-    ClockCounterClockwise
+    ClockCounterClockwise,
+    Waveform,
 } from '@phosphor-icons/react'
 import type { UserRole } from '../../types'
 
@@ -32,6 +33,7 @@ const mainMenu: NavItem[] = [
     { id: 4, name: 'Session Notes', href: '/notes', icon: Notebook },
     { id: 11, name: 'Intakes', href: '/intakes', icon: ClipboardText },
     { id: 12, name: 'Treatment Plans', href: '/treatment-plans', icon: ClipboardText },
+    { id: 13, name: 'Bilateral Stimulation', href: '/bls/control', icon: Waveform },
     { id: 5, name: 'Billing', href: '/billing', icon: CurrencyDollar },
     { id: 6, name: 'Reports', href: '/reports', icon: ChartBar },
 ]

@@ -9,7 +9,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "download:bls-illustrations": "node scripts/download-bls-illustrations.mjs",
+    "download:bls-backgrounds": "node scripts/download-bls-backgrounds.mjs",
+    "download:bls-sound-icons": "node scripts/download-bls-sound-icons.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "^6.1.20",

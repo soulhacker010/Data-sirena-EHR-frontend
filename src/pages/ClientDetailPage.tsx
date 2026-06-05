@@ -6,6 +6,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom'
 import { DashboardLayout } from '../components/layout'
 import { Modal, EditClientModal, EmptyState, PageSkeleton, ConfirmDialog } from '../components/ui'
 import { ContactNotesTab, ServiceCategoryBadges } from '../components/shared'
+import { BLSHistorySection } from '../components/bls'
 import { clientsApi, billingApi, notesApi, appointmentsApi, intakesApi } from '../api'
 import type { IntakeListItem } from '../api/intakes'
 
@@ -39,10 +40,11 @@ import {
     ClipboardText,
     Eraser,
     ChatCircleText,
+    Waveform,
 } from '@phosphor-icons/react'
 
 // Tab type
-type TabType = 'profile' | 'insurance' | 'authorizations' | 'appointments' | 'notes' | 'intakes' | 'contacts' | 'documents' | 'billing'
+type TabType = 'profile' | 'insurance' | 'authorizations' | 'appointments' | 'notes' | 'intakes' | 'contacts' | 'documents' | 'bls' | 'billing'
 
 // Format date — delegate to timezone-safe utility
 const formatDate = (date: string | undefined) => formatDateSafe(date)
@@ -438,6 +440,9 @@ export default function ClientDetailPage() {
                 </button>
                 <button className={`client-tab ${activeTab === 'documents' ? 'active' : ''}`} onClick={() => setActiveTab('documents')}>
                     <File size={18} weight="duotone" /> Documents
+                </button>
+                <button className={`client-tab ${activeTab === 'bls' ? 'active' : ''}`} onClick={() => setActiveTab('bls')}>
+                    <Waveform size={18} weight="duotone" /> BLS
                 </button>
                 {canAccessBilling && (
                     <button className={`client-tab ${activeTab === 'billing' ? 'active' : ''}`} onClick={() => setActiveTab('billing')}>
@@ -937,6 +942,14 @@ export default function ClientDetailPage() {
                             )}
                         </div>
                     </div>
+                )}
+
+                {/* BLS (Bilateral Stimulation) Tab */}
+                {activeTab === 'bls' && client && id && (
+                    <BLSHistorySection
+                        clientId={id}
+                        clientName={`${client.first_name} ${client.last_name}`}
+                    />
                 )}
 
                 {/* Billing Tab */}

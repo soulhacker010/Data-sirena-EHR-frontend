@@ -878,6 +878,34 @@ export default function CalendarPage() {
         navigate(`/notes/new?appointment=${selectedAppointment.id}`)
     }
 
+    // Launch the BLS control panel for this appointment. Pre-populates the
+    // panel with the client name + a short appointment label so the therapist
+    // doesn't have to re-orient themselves. Only available for scheduled
+    // client sessions (we hide the button otherwise — see the modal action
+    // block below).
+    const handleStartBLS = () => {
+        if (!selectedAppointment) return
+        const clientLabel = aptClientName(selectedAppointment)
+        const apptStart = new Date(selectedAppointment.start_time)
+        const apptLabel = apptStart.toLocaleString('en-US', {
+            weekday: 'short', month: 'short', day: 'numeric',
+            hour: 'numeric', minute: '2-digit',
+        })
+        const params = new URLSearchParams({
+            client_name: clientLabel,
+            appt: apptLabel,
+            appointment_id: selectedAppointment.id,
+        })
+        // client_id is the FK we'll need to write the BLS session into the
+        // right client chart's history. Guarded because some legacy event
+        // types may not carry a client reference.
+        if (selectedAppointment.client?.id) {
+            params.set('client_id', selectedAppointment.client.id)
+        }
+        setIsViewModalOpen(false)
+        navigate(`/bls/control?${params.toString()}`)
+    }
+
     if (isLoading) {
         return (
             <DashboardLayout>
@@ -1452,6 +1480,14 @@ export default function CalendarPage() {
                             {selectedAppointment.status === 'scheduled' && (
                                 <>
                                     <button className="btn-primary" onClick={handleStartSession}>Start Session</button>
+                                    {/* BLS launch — only for actual client sessions (not breaks /
+                                        admin blocks). Hidden behind event_type === 'client_session'
+                                        so it doesn't appear on non-clinical events on the calendar. */}
+                                    {(selectedAppointment.event_type ?? 'client_session') === 'client_session' && (
+                                        <button className="btn-secondary" onClick={handleStartBLS}>
+                                            Start BLS
+                                        </button>
+                                    )}
                                     <button className="btn-secondary" onClick={handleReschedule}>Edit</button>
                                     <button className="btn-secondary" onClick={handleMarkNoShow}>No-Show</button>
                                     <button className="btn-danger-outline" onClick={handleCancelClick}>Cancel</button>
@@ -1465,6 +1501,11 @@ export default function CalendarPage() {
                             {selectedAppointment.status === 'attended' && (
                                 <>
                                     <button className="btn-primary" onClick={handleViewNotes}>View Notes</button>
+                                    {(selectedAppointment.event_type ?? 'client_session') === 'client_session' && (
+                                        <button className="btn-secondary" onClick={handleStartBLS}>
+                                            Start BLS
+                                        </button>
+                                    )}
                                     <button className="btn-secondary" onClick={handleReschedule}>Edit</button>
                                 </>
                             )}

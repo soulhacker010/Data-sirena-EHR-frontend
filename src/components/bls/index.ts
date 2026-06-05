@@ -1,0 +1,13 @@
+// BLS dashboard components — barrel export
+export { default as BLSPreviewPane } from './BLSPreviewPane'
+export { default as BLSVisualControls } from './BLSVisualControls'
+export { default as BLSSoundPicker } from './BLSSoundPicker'
+export { default as BLSSpeedSlider } from './BLSSpeedSlider'
+export { default as BLSAutostopControl } from './BLSAutostopControl'
+export { default as BLSSessionCounters } from './BLSSessionCounters'
+export { default as BLSStatusBadge } from './BLSStatusBadge'
+export { default as BLSHistorySection } from './BLSHistorySection'
+export { default as BLSDefaultsSection } from './BLSDefaultsSection'
+export { default as BLSIllustrationPicker } from './BLSIllustrationPicker'
+export { default as BLSBackgroundPicker } from './BLSBackgroundPicker'
+export { default as BLSSoundLibraryModal } from './BLSSoundLibraryModal'

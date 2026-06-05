@@ -17,8 +17,10 @@ import {
     CheckCircle,
     Plus,
     Trash,
-    IdentificationBadge
+    IdentificationBadge,
+    Waveform,
 } from '@phosphor-icons/react'
+import { BLSDefaultsSection } from '../components/bls'
 
 interface SettingsSection {
     id: string
@@ -29,6 +31,7 @@ interface SettingsSection {
 const settingsSections: SettingsSection[] = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'practice', label: 'Practice Info', icon: Buildings },
+    { id: 'bls', label: 'BLS Defaults', icon: Waveform },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'security', label: 'Security', icon: Lock },
 ]
@@ -605,6 +608,9 @@ export default function SettingsPage() {
                             </div>
                         </div>
                     )}
+
+                    {/* ─── BLS Defaults Section ────────────────────────── */}
+                    {activeSection === 'bls' && <BLSDefaultsSection />}
 
                     {/* ─── Notifications Section ──────────────────────── */}
                     {activeSection === 'notifications' && (

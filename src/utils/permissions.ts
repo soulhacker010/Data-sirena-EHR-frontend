@@ -79,6 +79,7 @@ const routePermissions: RoutePermission[] = [
     { path: '/notes', roles: CLINICAL_ROLES },
     { path: '/intakes', roles: CLINICAL_ROLES },
     { path: '/treatment-plans', roles: CLINICAL_ROLES },
+    { path: '/bls', roles: CLINICAL_ROLES },
 
     // Scheduling — IsFrontDesk (everyone except biller)
     { path: '/calendar', roles: SCHEDULING_ROLES },

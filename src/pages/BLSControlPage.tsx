@@ -159,17 +159,19 @@ export default function BLSControlPage() {
                     dispatch({ type: 'CLIENT_DISCONNECTED', reason: 'manual' })
                     break
                 case 'CLIENT_DISCONNECTED':
-                    dispatch({ type: 'CLIENT_DISCONNECTED', reason: 'transport' })
+                    // Server-broadcast disconnect (WS transport closed). Maps
+                    // to 'network' since it wasn't a user-initiated bye.
+                    dispatch({ type: 'CLIENT_DISCONNECTED', reason: 'network' })
                     break
                 case 'SESSION_END':
                     // Server-driven end (e.g., admin force-end). The therapist
                     // shouldn't normally see this since they themselves trigger
-                    // END — but if it lands, treat as session over.
-                    dispatch({ type: 'CLIENT_DISCONNECTED', reason: 'ended' })
+                    // END — but if it lands, treat as session over (manual).
+                    dispatch({ type: 'CLIENT_DISCONNECTED', reason: 'manual' })
                     break
                 case 'KILL':
                     toast.error(`Session killed: ${msg.reason ?? 'unknown'}`)
-                    dispatch({ type: 'CLIENT_DISCONNECTED', reason: 'killed' })
+                    dispatch({ type: 'CLIENT_DISCONNECTED', reason: 'manual' })
                     break
                 case 'CLIENT_AUDIO_FAILED':
                     // Surface but don't kill — visual-only is a valid fallback.

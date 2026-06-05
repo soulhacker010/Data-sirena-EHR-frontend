@@ -570,14 +570,39 @@ function PausedOverlay() {
 
 function SessionEndedScreen() {
     return (
-        <div style={messageScreenStyle('#ECFDF5')}>
+        <div style={messageScreenStyle('#F8FAFC')}>
             <div style={messageBoxStyle}>
-                <div style={{ fontSize: 36, marginBottom: 12, color: '#059669' }}>✓</div>
-                <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 8px', color: '#065F46' }}>
-                    Session complete
+                <div
+                    aria-hidden="true"
+                    style={{
+                        width: 56,
+                        height: 56,
+                        margin: '0 auto 18px',
+                        borderRadius: '50%',
+                        background: '#F0FDFA',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}
+                >
+                    <svg
+                        width="28"
+                        height="28"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#0D9488"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    >
+                        <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                </div>
+                <h1 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 10px', color: '#0F172A' }}>
+                    Your session has ended
                 </h1>
-                <p style={{ fontSize: 14, color: '#047857', margin: 0 }}>
-                    Thank you. You can close this tab.
+                <p style={{ fontSize: 14, color: '#475569', margin: 0, lineHeight: 1.55 }}>
+                    Thank you for the session. Your therapist has ended it on their end — you can safely close this tab.
                 </p>
             </div>
         </div>

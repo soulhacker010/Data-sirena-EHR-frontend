@@ -463,14 +463,41 @@ function BLSCanvas({ config, runState, startedAt, showWaitingOverlay, audioFaile
 
 function InvalidTokenScreen() {
     return (
-        <div style={messageScreenStyle('#FEF2F2')}>
+        <div style={messageScreenStyle('#F8FAFC')}>
             <div style={messageBoxStyle}>
-                <div style={{ fontSize: 36, marginBottom: 12 }}>⚠</div>
-                <h1 style={{ fontSize: 22, fontWeight: 700, margin: '0 0 8px', color: '#991B1B' }}>
-                    Session not found
+                <div
+                    aria-hidden="true"
+                    style={{
+                        width: 56,
+                        height: 56,
+                        margin: '0 auto 18px',
+                        borderRadius: '50%',
+                        background: '#FFFBEB',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}
+                >
+                    <svg
+                        width="28"
+                        height="28"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#F59E0B"
+                        strokeWidth="2.25"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    >
+                        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                        <line x1="12" y1="9" x2="12" y2="13" />
+                        <line x1="12" y1="17" x2="12.01" y2="17" />
+                    </svg>
+                </div>
+                <h1 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 10px', color: '#0F172A' }}>
+                    This link isn’t active
                 </h1>
-                <p style={{ fontSize: 14, color: '#7F1D1D', margin: 0 }}>
-                    This link is invalid or has expired. Please ask your provider for a new link.
+                <p style={{ fontSize: 14, color: '#475569', margin: 0, lineHeight: 1.55 }}>
+                    The session link has expired or isn’t valid. Please ask your therapist for a new one.
                 </p>
             </div>
         </div>
@@ -611,14 +638,44 @@ function SessionEndedScreen() {
 
 function DisconnectedScreen() {
     return (
-        <div style={messageScreenStyle('#FEF2F2')}>
+        <div style={messageScreenStyle('#F8FAFC')}>
             <div style={messageBoxStyle}>
-                <div style={{ fontSize: 30, marginBottom: 12 }}>⚠</div>
-                <h1 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 8px', color: '#0F172A' }}>
+                <div
+                    aria-hidden="true"
+                    style={{
+                        width: 56,
+                        height: 56,
+                        margin: '0 auto 18px',
+                        borderRadius: '50%',
+                        background: '#FFFBEB',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}
+                >
+                    <svg
+                        width="28"
+                        height="28"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#F59E0B"
+                        strokeWidth="2.25"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                    >
+                        <line x1="1" y1="1" x2="23" y2="23" />
+                        <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55" />
+                        <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39" />
+                        <path d="M10.71 5.05A16 16 0 0 1 22.58 9" />
+                        <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88" />
+                        <line x1="12" y1="20" x2="12.01" y2="20" />
+                    </svg>
+                </div>
+                <h1 style={{ fontSize: 20, fontWeight: 700, margin: '0 0 10px', color: '#0F172A' }}>
                     Connection lost
                 </h1>
-                <p style={{ fontSize: 14, color: '#475569', margin: 0 }}>
-                    The session has been interrupted. Please contact your provider.
+                <p style={{ fontSize: 14, color: '#475569', margin: 0, lineHeight: 1.55 }}>
+                    The session was interrupted. Please check your internet and ask your therapist to send a new link if needed.
                 </p>
             </div>
         </div>

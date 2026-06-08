@@ -14,6 +14,7 @@ import {
     CalendarBlank,
     Warning,
     X,
+    ArrowSquareOut,
 } from '@phosphor-icons/react'
 import toast from 'react-hot-toast'
 import { ConfirmDialog } from '../components/ui'
@@ -572,6 +573,32 @@ export default function BLSControlPage() {
             .catch(() => toast.error('Copy failed — select and copy manually'))
     }, [state.live.inviteUrl])
 
+    // ─── In-office mode ────────────────────────────────────────────────────
+    // Opens the patient stimulus in a separate browser window on the same
+    // computer. Drag the window onto a second screen (iPad in mirror mode,
+    // external monitor, TV) facing the patient and control from this panel.
+    // Same WebSocket sync as a remote patient — just same-device.
+    const inOfficeWindowRef = useRef<Window | null>(null)
+    const handleOpenInOffice = useCallback(() => {
+        if (!state.live.inviteUrl) return
+        // If a previous in-office window is still open, just focus it.
+        if (inOfficeWindowRef.current && !inOfficeWindowRef.current.closed) {
+            inOfficeWindowRef.current.focus()
+            return
+        }
+        const w = window.open(
+            state.live.inviteUrl,
+            'bls-patient-view',
+            'popup,width=1280,height=800,noopener=no',
+        )
+        if (!w) {
+            toast.error('Pop-up blocked — allow pop-ups for this site and try again')
+            return
+        }
+        inOfficeWindowRef.current = w
+        toast.success('Patient view opened — drag onto a second screen')
+    }, [state.live.inviteUrl])
+
     // Opens the End Session confirm dialog. Actual end work happens in
     // handleEndConfirmed (which calls finalizeAndEndSession).
     const handleEndSession = useCallback(() => {
@@ -675,16 +702,28 @@ export default function BLSControlPage() {
                     />
                     {live.inviteUrl
                         ? (
-                            <button
-                                type="button"
-                                onClick={handleCopyInvite}
-                                style={btnSecondaryStyle}
-                                title={live.inviteUrl}
-                                className="bls-action-btn"
-                            >
-                                <Copy size={16} weight="bold" />
-                                Copy invite link
-                            </button>
+                            <>
+                                <button
+                                    type="button"
+                                    onClick={handleOpenInOffice}
+                                    style={btnPrimaryStyle}
+                                    title="Opens the patient view in a new window — drag onto a second screen facing the client"
+                                    className="bls-action-btn"
+                                >
+                                    <ArrowSquareOut size={16} weight="bold" />
+                                    Open patient view here
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={handleCopyInvite}
+                                    style={btnSecondaryStyle}
+                                    title={live.inviteUrl}
+                                    className="bls-action-btn"
+                                >
+                                    <Copy size={16} weight="bold" />
+                                    Copy invite link
+                                </button>
+                            </>
                         )
                         : (
                             <button

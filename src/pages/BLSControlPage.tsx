@@ -33,7 +33,7 @@ import { createBLSSyncTransport } from '../lib/blsSync'
 import type { BLSSyncMessage, BLSSyncTransportAPI } from '../lib/blsSync'
 import { recordBLSSession } from '../lib/blsHistory'
 import { blsReducer, buildInitialBLSPanelState } from '../lib/blsReducer'
-import type { BLSConfig, BLSAutostopMode } from '../types/bls'
+import type { BLSConfig, BLSRunState, BLSAutostopMode } from '../types/bls'
 import { blsApi, buildTherapistWebSocketUrl } from '../api/bls'
 
 /**
@@ -447,6 +447,17 @@ export default function BLSControlPage() {
         setChangeClientConfirmOpen(true)
     }, [])
 
+    // ─── In-office mode state ──────────────────────────────────────────────
+    // Single-screen workflow: therapist hits one button, session is created
+    // silently, the BLS canvas fills the screen, and a small floating control
+    // bar overlays the bottom. Declared up here (above finalize/end) so
+    // those callbacks can reference inOfficeMode without a TDZ error.
+    // The remote/telehealth flow (invite link + WebSocket to the client's
+    // own device) stays untouched. Both flows coexist on the same page.
+    const [inOfficeMode, setInOfficeMode] = useState(false)
+    const [controlsVisible, setControlsVisible] = useState(true)
+    const hideControlsTimerRef = useRef<number | null>(null)
+
     // Runs the session-end work: write history, signal the client, reset.
     // Declared BEFORE the callbacks that reference it (handleChangeClient­
     // Confirmed, handleEndConfirmed) to avoid a temporal-dead-zone error
@@ -542,10 +553,18 @@ export default function BLSControlPage() {
     }, [])
 
     // Wraps finalizeAndEndSession with the dialog-close + UX side effects.
+    // Also drops out of in-office mode + browser fullscreen so the therapist
+    // lands back on the regular control page after a session ends.
     const handleEndConfirmed = useCallback(() => {
         setEndConfirmOpen(false)
         finalizeAndEndSession()
-    }, [finalizeAndEndSession])
+        if (inOfficeMode) {
+            setInOfficeMode(false)
+            if (document.fullscreenElement && document.exitFullscreen) {
+                document.exitFullscreen().catch(() => { /* ignore */ })
+            }
+        }
+    }, [finalizeAndEndSession, inOfficeMode])
 
     // Confirmed end-and-change-client: finalize the current session, then
     // clear the client context so the picker re-appears. The clear runs
@@ -573,31 +592,98 @@ export default function BLSControlPage() {
             .catch(() => toast.error('Copy failed — select and copy manually'))
     }, [state.live.inviteUrl])
 
-    // ─── In-office mode ────────────────────────────────────────────────────
-    // Opens the patient stimulus in a separate browser window on the same
-    // computer. Drag the window onto a second screen (iPad in mirror mode,
-    // external monitor, TV) facing the patient and control from this panel.
-    // Same WebSocket sync as a remote patient — just same-device.
-    const inOfficeWindowRef = useRef<Window | null>(null)
-    const handleOpenInOffice = useCallback(() => {
-        if (!state.live.inviteUrl) return
-        // If a previous in-office window is still open, just focus it.
-        if (inOfficeWindowRef.current && !inOfficeWindowRef.current.closed) {
-            inOfficeWindowRef.current.focus()
+    const handleStartInOffice = useCallback(async () => {
+        if (!state.live.clientId) {
+            toast.error('Select a client first so the session is logged to their chart')
             return
         }
-        const w = window.open(
-            state.live.inviteUrl,
-            'bls-patient-view',
-            'popup,width=1280,height=800,noopener=no',
-        )
-        if (!w) {
-            toast.error('Pop-up blocked — allow pop-ups for this site and try again')
-            return
+        // Create the backend session (same as Invite) if it doesn't already
+        // exist. We deliberately don't show the invite URL — in-office mode
+        // doesn't use it. If the backend is unreachable, fall through to the
+        // local-only flow so the feature still works.
+        if (!state.live.sessionId) {
+            try {
+                const response = await blsApi.createSession(
+                    state.live.clientId,
+                    state.live.appointmentId,
+                )
+                const accessToken = localStorage.getItem('sirena_access_token') ?? ''
+                wsUrlRef.current = buildTherapistWebSocketUrl(response.session_id, accessToken)
+                dispatch({
+                    type: 'INVITE_CLIENT_FROM_BACKEND',
+                    sessionId: response.session_id,
+                    inviteUrl: response.invite_url,
+                })
+            } catch (err) {
+                console.warn('[BLS] backend unreachable, in-office continues offline', err)
+                wsUrlRef.current = null
+                dispatch({ type: 'INVITE_CLIENT' })
+            }
         }
-        inOfficeWindowRef.current = w
-        toast.success('Patient view opened — drag onto a second screen')
-    }, [state.live.inviteUrl])
+        setInOfficeMode(true)
+        // Browser fullscreen — the canvas overlay below still works without
+        // it (overlay is position: fixed), but real fullscreen hides the
+        // address bar and OS chrome which feels cleaner during a session.
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(() => {
+                // Fullscreen denied (Safari iframe, permissions). Overlay
+                // covers the page anyway — no toast needed.
+            })
+        }
+    }, [state.live.clientId, state.live.appointmentId, state.live.sessionId])
+
+    const handleExitInOffice = useCallback(() => {
+        setInOfficeMode(true)  // no-op safety
+        setInOfficeMode(false)
+        if (document.fullscreenElement && document.exitFullscreen) {
+            document.exitFullscreen().catch(() => { /* ignore */ })
+        }
+    }, [])
+
+    // Auto-hide the floating control bar after 3s of mouse inactivity.
+    // Same affordance as a YouTube player — keeps the stimulus distraction-free
+    // but the controls reappear instantly on any mouse move.
+    const bumpControlsVisible = useCallback(() => {
+        setControlsVisible(true)
+        if (hideControlsTimerRef.current) {
+            window.clearTimeout(hideControlsTimerRef.current)
+        }
+        hideControlsTimerRef.current = window.setTimeout(() => {
+            setControlsVisible(false)
+        }, 3000)
+    }, [])
+    useEffect(() => {
+        if (!inOfficeMode) return
+        bumpControlsVisible()
+        const onMove = () => bumpControlsVisible()
+        window.addEventListener('mousemove', onMove)
+        return () => {
+            window.removeEventListener('mousemove', onMove)
+            if (hideControlsTimerRef.current) {
+                window.clearTimeout(hideControlsTimerRef.current)
+            }
+        }
+    }, [inOfficeMode, bumpControlsVisible])
+
+    // ESC out of in-office mode. The browser handles the actual fullscreen
+    // exit on its own — we just need to clear our overlay state.
+    useEffect(() => {
+        if (!inOfficeMode) return
+        const onFsChange = () => {
+            if (!document.fullscreenElement) {
+                setInOfficeMode(false)
+            }
+        }
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setInOfficeMode(false)
+        }
+        document.addEventListener('fullscreenchange', onFsChange)
+        window.addEventListener('keydown', onKey)
+        return () => {
+            document.removeEventListener('fullscreenchange', onFsChange)
+            window.removeEventListener('keydown', onKey)
+        }
+    }, [inOfficeMode])
 
     // Opens the End Session confirm dialog. Actual end work happens in
     // handleEndConfirmed (which calls finalizeAndEndSession).
@@ -614,7 +700,10 @@ export default function BLSControlPage() {
             dispatch({ type: 'STOP_SET' })
             return
         }
-        if (state.live.clientStatus !== 'connected') {
+        // In-office mode skips the "wait for client connect" gate — the
+        // therapist IS the screen the patient is watching. Remote/telehealth
+        // mode still requires the client to be on a separate device.
+        if (!inOfficeMode && state.live.clientStatus !== 'connected') {
             toast.error('Invite a client and wait for them to connect first')
             return
         }
@@ -625,7 +714,7 @@ export default function BLSControlPage() {
         // Unlock audio context inside the user gesture (Safari requirement).
         unlockAudio()
         dispatch({ type: 'START' })
-    }, [state.live.runState, state.live.clientStatus, state.config.visualEnabled, state.config.auditoryEnabled])
+    }, [state.live.runState, state.live.clientStatus, state.config.visualEnabled, state.config.auditoryEnabled, inOfficeMode])
 
     const handlePauseResume = useCallback(() => {
         if (state.live.runState === 'running') dispatch({ type: 'PAUSE' })
@@ -700,44 +789,45 @@ export default function BLSControlPage() {
                         status={live.clientStatus}
                         inviteSent={live.inviteUrl !== null}
                     />
+                    <button
+                        type="button"
+                        onClick={handleStartInOffice}
+                        style={live.clientId ? btnPrimaryStyle : btnDisabledStyle}
+                        className="bls-action-btn"
+                        disabled={!live.clientId}
+                        title={live.clientId
+                            ? 'Run BLS on this screen — patient sits next to you, you control'
+                            : 'Select a client first'}
+                    >
+                        <ArrowSquareOut size={16} weight="bold" />
+                        Start in-office session
+                    </button>
                     {live.inviteUrl
                         ? (
-                            <>
-                                <button
-                                    type="button"
-                                    onClick={handleOpenInOffice}
-                                    style={btnPrimaryStyle}
-                                    title="Opens the patient view in a new window — drag onto a second screen facing the client"
-                                    className="bls-action-btn"
-                                >
-                                    <ArrowSquareOut size={16} weight="bold" />
-                                    Open patient view here
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={handleCopyInvite}
-                                    style={btnSecondaryStyle}
-                                    title={live.inviteUrl}
-                                    className="bls-action-btn"
-                                >
-                                    <Copy size={16} weight="bold" />
-                                    Copy invite link
-                                </button>
-                            </>
+                            <button
+                                type="button"
+                                onClick={handleCopyInvite}
+                                style={btnSecondaryStyle}
+                                title={live.inviteUrl}
+                                className="bls-action-btn"
+                            >
+                                <Copy size={16} weight="bold" />
+                                Copy invite link
+                            </button>
                         )
                         : (
                             <button
                                 type="button"
                                 onClick={handleInvite}
-                                style={live.clientId ? btnPrimaryStyle : btnDisabledStyle}
+                                style={live.clientId ? btnSecondaryStyle : btnDisabledStyle}
                                 className="bls-action-btn"
                                 disabled={!live.clientId}
                                 title={live.clientId
-                                    ? 'Generate an invite link for the client'
+                                    ? 'Send a link so the client can join on their own device (telehealth)'
                                     : 'Select a client first'}
                             >
                                 <PaperPlaneTilt size={16} weight="bold" />
-                                Invite Client
+                                Send invite link
                             </button>
                         )
                     }
@@ -961,8 +1051,235 @@ export default function BLSControlPage() {
                 cancelLabel="Keep Current"
                 variant="warning"
             />
+
+            {/* ─── In-office full-screen overlay ────────────────────────── */}
+            {inOfficeMode && (
+                <InOfficeOverlay
+                    config={config}
+                    runState={live.runState}
+                    startedAt={startedAtForPreview}
+                    audioActive={live.runState === 'running' && config.auditoryEnabled}
+                    onPass={onPreviewPass}
+                    passCount={live.passCount}
+                    setCount={live.setCount}
+                    controlsVisible={controlsVisible}
+                    onStartStop={handleStartStop}
+                    onPauseResume={handlePauseResume}
+                    onEnd={handleEndSession}
+                    onExit={handleExitInOffice}
+                />
+            )}
         </DashboardLayout>
     )
+}
+
+// ─── In-office full-screen overlay ───────────────────────────────────────────
+//
+// Single-screen workflow for therapists running an in-office EMDR session.
+// Renders the stimulus canvas full-window and overlays a small floating
+// control bar at the bottom (Start / Pause / End). The bar auto-hides
+// after 3s of mouse inactivity (same affordance as a YouTube player) so the
+// stimulus is distraction-free.
+//
+// Implementation note: re-uses BLSPreviewPane for the canvas — same renderer
+// as the "What client sees" preview. The CSS overrides below stretch its
+// internal <canvas> to fill the entire overlay regardless of the preview's
+// default aspect ratio.
+
+interface InOfficeOverlayProps {
+    config: BLSConfig
+    runState: BLSRunState
+    startedAt: number | null
+    audioActive: boolean
+    onPass?: () => void
+    passCount: number
+    setCount: number
+    controlsVisible: boolean
+    onStartStop: () => void
+    onPauseResume: () => void
+    onEnd: () => void
+    onExit: () => void
+}
+
+function InOfficeOverlay(props: InOfficeOverlayProps) {
+    const {
+        config, runState, startedAt, audioActive, onPass,
+        passCount, setCount, controlsVisible,
+        onStartStop, onPauseResume, onEnd, onExit,
+    } = props
+    return (
+        <div
+            style={{
+                position: 'fixed',
+                inset: 0,
+                background: '#0F172A',
+                zIndex: 9999,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'stretch',
+                justifyContent: 'center',
+            }}
+        >
+            <style>{`
+                .bls-in-office-stage canvas {
+                    width: 100% !important;
+                    height: 100% !important;
+                    max-width: none !important;
+                    max-height: none !important;
+                }
+                .bls-in-office-controls {
+                    transition: opacity 280ms ease;
+                }
+            `}</style>
+            <div
+                className="bls-in-office-stage"
+                style={{ flex: 1, minHeight: 0, display: 'flex' }}
+            >
+                <BLSPreviewPane
+                    config={config}
+                    runState={runState}
+                    startedAt={startedAt}
+                    audioActive={audioActive}
+                    onPass={onPass}
+                />
+            </div>
+
+            {/* Floating control bar */}
+            <div
+                className="bls-in-office-controls"
+                style={{
+                    position: 'fixed',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    bottom: 28,
+                    display: 'flex',
+                    gap: 10,
+                    padding: '12px 14px',
+                    background: 'rgba(15, 23, 42, 0.82)',
+                    backdropFilter: 'blur(10px)',
+                    WebkitBackdropFilter: 'blur(10px)',
+                    borderRadius: 16,
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    boxShadow: '0 20px 50px rgba(0,0,0,0.45)',
+                    opacity: controlsVisible ? 1 : 0,
+                    pointerEvents: controlsVisible ? 'auto' : 'none',
+                    alignItems: 'center',
+                }}
+            >
+                <button
+                    type="button"
+                    onClick={onStartStop}
+                    style={overlayPrimaryBtnStyle}
+                    title={runState === 'running' ? 'Stop this set' : 'Start BLS'}
+                >
+                    {runState === 'running'
+                        ? <><Stop size={18} weight="fill" /> Stop set</>
+                        : <><Play size={18} weight="fill" /> Start</>
+                    }
+                </button>
+                {(runState === 'running' || runState === 'paused') && (
+                    <button
+                        type="button"
+                        onClick={onPauseResume}
+                        style={overlaySecondaryBtnStyle}
+                        title={runState === 'running' ? 'Pause' : 'Resume'}
+                    >
+                        {runState === 'running'
+                            ? <><Pause size={18} weight="fill" /> Pause</>
+                            : <><Play size={18} weight="fill" /> Resume</>
+                        }
+                    </button>
+                )}
+                <div style={overlayCountersStyle}>
+                    <div><span style={overlayCountLabel}>Passes</span><span style={overlayCountValue}>{passCount}</span></div>
+                    <div style={{ width: 1, height: 28, background: 'rgba(255,255,255,0.15)' }} />
+                    <div><span style={overlayCountLabel}>Sets</span><span style={overlayCountValue}>{setCount}</span></div>
+                </div>
+                <button
+                    type="button"
+                    onClick={onEnd}
+                    style={overlayDangerBtnStyle}
+                    title="End the session and save to the chart"
+                >
+                    End session
+                </button>
+                <button
+                    type="button"
+                    onClick={onExit}
+                    style={overlayExitBtnStyle}
+                    title="Exit fullscreen (does not end the session)"
+                    aria-label="Exit fullscreen"
+                >
+                    <X size={18} weight="bold" />
+                </button>
+            </div>
+
+            {/* Faint hint shown when the canvas is idle so therapists know
+                the screen they're seeing is what the patient will see. */}
+            {runState === 'idle' && controlsVisible && (
+                <div style={{
+                    position: 'fixed',
+                    top: 24,
+                    left: 0,
+                    right: 0,
+                    textAlign: 'center',
+                    color: 'rgba(255,255,255,0.55)',
+                    fontSize: 13,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                    fontWeight: 600,
+                    pointerEvents: 'none',
+                }}>
+                    Turn the screen to face the client and press Start
+                </div>
+            )}
+        </div>
+    )
+}
+
+const overlayPrimaryBtnStyle: CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', gap: 8,
+    padding: '11px 18px',
+    background: '#0D9488', color: 'white',
+    border: 'none', borderRadius: 10,
+    fontSize: 14, fontWeight: 600, cursor: 'pointer',
+}
+const overlaySecondaryBtnStyle: CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', gap: 8,
+    padding: '11px 16px',
+    background: 'rgba(255,255,255,0.10)', color: 'white',
+    border: '1px solid rgba(255,255,255,0.18)', borderRadius: 10,
+    fontSize: 14, fontWeight: 600, cursor: 'pointer',
+}
+const overlayDangerBtnStyle: CSSProperties = {
+    padding: '11px 16px',
+    background: 'rgba(239,68,68,0.18)', color: '#FCA5A5',
+    border: '1px solid rgba(239,68,68,0.32)', borderRadius: 10,
+    fontSize: 14, fontWeight: 600, cursor: 'pointer',
+}
+const overlayExitBtnStyle: CSSProperties = {
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+    width: 38, height: 38,
+    background: 'rgba(255,255,255,0.08)', color: 'white',
+    border: '1px solid rgba(255,255,255,0.14)', borderRadius: 10,
+    cursor: 'pointer',
+}
+const overlayCountersStyle: CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 14,
+    padding: '0 12px',
+    color: 'white',
+}
+const overlayCountLabel: CSSProperties = {
+    display: 'block',
+    fontSize: 10, fontWeight: 600,
+    letterSpacing: '0.1em', textTransform: 'uppercase',
+    color: 'rgba(255,255,255,0.55)',
+    marginBottom: 2,
+}
+const overlayCountValue: CSSProperties = {
+    display: 'block',
+    fontSize: 18, fontWeight: 700,
+    fontVariantNumeric: 'tabular-nums',
 }
 
 // ─── Styles ─────────────────────────────────────────────────────────────────

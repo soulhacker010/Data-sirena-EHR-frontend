@@ -75,6 +75,14 @@ export default function BLSControlPage() {
     const [endConfirmOpen, setEndConfirmOpen] = useState(false)
     const [changeClientConfirmOpen, setChangeClientConfirmOpen] = useState(false)
 
+    // In-office mode state. Declared up here so every callback below
+    // (keyboard handler, finalize/end, start, etc.) can read it without a
+    // temporal-dead-zone error. See InOfficeOverlay at the bottom of this
+    // file for the actual UI.
+    const [inOfficeMode, setInOfficeMode] = useState(false)
+    const [controlsVisible, setControlsVisible] = useState(true)
+    const hideControlsTimerRef = useRef<number | null>(null)
+
     // Always-current state ref. We mutate during render (safe — read-only ref,
     // never affects render output) so async transport handlers always see the
     // latest config + runState + startedAt without re-creating the effect on
@@ -263,7 +271,11 @@ export default function BLSControlPage() {
                 if (runState === 'running') {
                     dispatch({ type: 'STOP_SET' })
                 } else {
-                    if (clientStatus !== 'connected') {
+                    // In-office mode skips the "wait for remote client" gate
+                    // since the therapist IS the screen the patient is
+                    // watching. Telehealth mode still requires a connected
+                    // client on a separate device.
+                    if (!inOfficeMode && clientStatus !== 'connected') {
                         toast.error('Invite a client and wait for them to connect first')
                         return
                     }
@@ -276,7 +288,10 @@ export default function BLSControlPage() {
                 }
                 return
             }
-            if (e.key === 'Escape') {
+            // Escape inside the in-office overlay is reserved for exiting the
+            // overlay (handled in the dedicated effect below). Don't also
+            // stop the running set here, or the user gets two actions per ESC.
+            if (e.key === 'Escape' && !inOfficeMode) {
                 if (runState === 'running' || runState === 'paused') {
                     e.preventDefault()
                     dispatch({ type: 'STOP_SET' })
@@ -296,7 +311,7 @@ export default function BLSControlPage() {
         }
         window.addEventListener('keydown', handler)
         return () => window.removeEventListener('keydown', handler)
-    }, [state.live, state.config.visualEnabled, state.config.auditoryEnabled])
+    }, [state.live, state.config.visualEnabled, state.config.auditoryEnabled, inOfficeMode])
 
     // ─── Tick loop while running (drives the elapsed-time counter) ─────────
     useEffect(() => {
@@ -446,17 +461,6 @@ export default function BLSControlPage() {
         }
         setChangeClientConfirmOpen(true)
     }, [])
-
-    // ─── In-office mode state ──────────────────────────────────────────────
-    // Single-screen workflow: therapist hits one button, session is created
-    // silently, the BLS canvas fills the screen, and a small floating control
-    // bar overlays the bottom. Declared up here (above finalize/end) so
-    // those callbacks can reference inOfficeMode without a TDZ error.
-    // The remote/telehealth flow (invite link + WebSocket to the client's
-    // own device) stays untouched. Both flows coexist on the same page.
-    const [inOfficeMode, setInOfficeMode] = useState(false)
-    const [controlsVisible, setControlsVisible] = useState(true)
-    const hideControlsTimerRef = useRef<number | null>(null)
 
     // Runs the session-end work: write history, signal the client, reset.
     // Declared BEFORE the callbacks that reference it (handleChangeClient­
@@ -637,11 +641,23 @@ export default function BLSControlPage() {
     }, [state.live.clientId, state.live.appointmentId, state.live.sessionId])
 
     const handleExitInOffice = useCallback(() => {
-        setInOfficeMode(true)  // no-op safety
         setInOfficeMode(false)
         if (document.fullscreenElement && document.exitFullscreen) {
             document.exitFullscreen().catch(() => { /* ignore */ })
         }
+    }, [])
+
+    // End session from inside the in-office overlay: exit fullscreen first
+    // so the ConfirmDialog actually paints (it sits below the overlay in z
+    // order; in real fullscreen the browser would hide it entirely), THEN
+    // open the dialog. Small timeout lets the fullscreen exit complete
+    // before the dialog mounts — otherwise the dialog can flash and miss.
+    const handleEndFromOverlay = useCallback(() => {
+        setInOfficeMode(false)
+        if (document.fullscreenElement && document.exitFullscreen) {
+            document.exitFullscreen().catch(() => { /* ignore */ })
+        }
+        setTimeout(() => setEndConfirmOpen(true), 60)
     }, [])
 
     // Auto-hide the floating control bar after 3s of mouse inactivity.
@@ -1069,7 +1085,7 @@ export default function BLSControlPage() {
                     controlsVisible={controlsVisible}
                     onStartStop={handleStartStop}
                     onPauseResume={handlePauseResume}
-                    onEnd={handleEndSession}
+                    onEnd={handleEndFromOverlay}
                     onExit={handleExitInOffice}
                 />
             )}
@@ -1160,6 +1176,19 @@ function InOfficeOverlay(props: InOfficeOverlayProps) {
                 }
                 .bls-in-office-controls {
                     transition: opacity 280ms ease;
+                }
+                /* Press feedback on every overlay button — subtle scale +
+                   darken on mouse down, faster than CSS default so it feels
+                   responsive even mid-session. */
+                .bls-in-office-controls button {
+                    transition: transform 90ms ease, filter 120ms ease, background 180ms ease;
+                }
+                .bls-in-office-controls button:hover {
+                    filter: brightness(1.08);
+                }
+                .bls-in-office-controls button:active {
+                    transform: scale(0.94);
+                    filter: brightness(0.92);
                 }
             `}</style>
             <div

@@ -652,13 +652,23 @@ export default function BLSControlPage() {
     // order; in real fullscreen the browser would hide it entirely), THEN
     // open the dialog. Small timeout lets the fullscreen exit complete
     // before the dialog mounts — otherwise the dialog can flash and miss.
+    //
+    // Critically: pause the stimulus first if it's still running. Otherwise
+    // the dot keeps bouncing and the pass counter keeps climbing behind the
+    // dialog, which feels broken — the therapist meant "I'm done" the moment
+    // they hit the button, not after they tap Confirm. If they pick "Keep
+    // Session" they'll land on the regular control page with the BLS in a
+    // paused state, ready to resume.
     const handleEndFromOverlay = useCallback(() => {
+        if (state.live.runState === 'running') {
+            dispatch({ type: 'PAUSE' })
+        }
         setInOfficeMode(false)
         if (document.fullscreenElement && document.exitFullscreen) {
             document.exitFullscreen().catch(() => { /* ignore */ })
         }
         setTimeout(() => setEndConfirmOpen(true), 60)
-    }, [])
+    }, [state.live.runState])
 
     // Auto-hide the floating control bar after 3s of mouse inactivity.
     // Same affordance as a YouTube player — keeps the stimulus distraction-free

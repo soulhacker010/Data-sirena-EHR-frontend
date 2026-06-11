@@ -597,6 +597,20 @@ export default function BLSControlPage() {
             toast.error('Select a client first so the session is logged to their chart')
             return
         }
+        // CRITICAL: request browser fullscreen FIRST, synchronously inside
+        // the click handler. Browsers (Chrome especially) consume the user
+        // gesture after the first `await` — if requestFullscreen() runs after
+        // an await, it gets silently denied. Trigger overlay + fullscreen
+        // together so the screen is full-bleed immediately, then create the
+        // session in the background.
+        setInOfficeMode(true)
+        if (document.documentElement.requestFullscreen) {
+            document.documentElement.requestFullscreen().catch(() => {
+                // Fullscreen denied (Safari iframe, OS permissions). The
+                // position:fixed overlay still covers the page, so the
+                // visual experience is preserved.
+            })
+        }
         // Create the backend session (same as Invite) if it doesn't already
         // exist. We deliberately don't show the invite URL — in-office mode
         // doesn't use it. If the backend is unreachable, fall through to the
@@ -619,16 +633,6 @@ export default function BLSControlPage() {
                 wsUrlRef.current = null
                 dispatch({ type: 'INVITE_CLIENT' })
             }
-        }
-        setInOfficeMode(true)
-        // Browser fullscreen — the canvas overlay below still works without
-        // it (overlay is position: fixed), but real fullscreen hides the
-        // address bar and OS chrome which feels cleaner during a session.
-        if (document.documentElement.requestFullscreen) {
-            document.documentElement.requestFullscreen().catch(() => {
-                // Fullscreen denied (Safari iframe, permissions). Overlay
-                // covers the page anyway — no toast needed.
-            })
         }
     }, [state.live.clientId, state.live.appointmentId, state.live.sessionId])
 
@@ -1121,11 +1125,38 @@ function InOfficeOverlay(props: InOfficeOverlayProps) {
             }}
         >
             <style>{`
+                /* Force the entire preview pane subtree to fill the overlay.
+                   BLSPreviewPane was designed for a small inline preview
+                   (canvas height: 200, wrapper gap: 12, border radius). For
+                   in-office mode we want it edge-to-edge — strip every
+                   constraint that would letterbox the stimulus. */
+                .bls-in-office-stage,
+                .bls-in-office-stage > div,
+                .bls-in-office-stage > div > div {
+                    width: 100% !important;
+                    height: 100% !important;
+                    max-width: none !important;
+                    max-height: none !important;
+                    flex: 1 !important;
+                    gap: 0 !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                }
                 .bls-in-office-stage canvas {
                     width: 100% !important;
                     height: 100% !important;
                     max-width: none !important;
                     max-height: none !important;
+                    border-radius: 0 !important;
+                    border: none !important;
+                    display: block !important;
+                }
+                /* Hide the "Preview" / "Paused" / "Running" badges and the
+                   small L/R audio indicator — they belong to the inline
+                   preview, not the full-screen patient view. */
+                .bls-in-office-stage [aria-label="Preview of what the client will see"] ~ div,
+                .bls-in-office-stage > div > div:nth-child(2) {
+                    display: none !important;
                 }
                 .bls-in-office-controls {
                     transition: opacity 280ms ease;
@@ -1133,7 +1164,13 @@ function InOfficeOverlay(props: InOfficeOverlayProps) {
             `}</style>
             <div
                 className="bls-in-office-stage"
-                style={{ flex: 1, minHeight: 0, display: 'flex' }}
+                style={{
+                    flex: 1,
+                    minHeight: 0,
+                    display: 'flex',
+                    width: '100%',
+                    height: '100%',
+                }}
             >
                 <BLSPreviewPane
                     config={config}

@@ -468,12 +468,24 @@ export default function BillingPage() {
                 _submission?: { status: string; message: string; filename: string; test_mode: boolean }
             }
             const submission = result._submission
+            // Only 'uploaded' means the payer will actually see this claim. The
+            // other outcomes leave the file sitting on our server, so they must
+            // never read as success — a green tick here previously told the
+            // clinician a claim was filed when it had not left the building.
             if (submission?.status === 'uploaded') {
                 toast.success(`Claim uploaded to Office Ally — ${submission.filename}`)
             } else if (submission?.status === 'generated') {
-                toast.success('Claim file generated. SFTP upload pending credentials.')
+                toast('Claim file generated, but NOT sent — Office Ally credentials are not set up. The claim is not with the payer yet.', {
+                    icon: '⚠️',
+                    duration: 8000,
+                })
+            } else if (submission?.status === 'upload_failed') {
+                toast.error(
+                    `Claim was NOT sent to Office Ally — ${submission.message}. The claim has not been filed; try again once the connection is fixed.`,
+                    { duration: 10000 },
+                )
             } else {
-                toast.success('Claim submitted')
+                toast.error('Claim submission returned an unexpected result — treat this claim as NOT filed and check with support.')
             }
             setIsClaimModalOpen(false)
             fetchClaims()

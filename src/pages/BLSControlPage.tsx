@@ -39,22 +39,33 @@ import { blsApi, buildTherapistWebSocketUrl } from '../api/bls'
 /**
  * Bilateral Stimulation (BLS) Therapist Control Panel.
  *
- * Mocked-data version — see BLS-SYSTEM-DESIGN.md for the full system design,
- * data model, real-time protocol, and failure modes. This page covers
- * everything in the design doc that lives client-side, with all server
- * interactions stubbed: the "client" auto-connects 1.5s after Invite is
- * clicked, pass counts come from the local canvas renderer, and the audio
- * "L/R indicator" is driven by a local interval.
+ * See BLS-SYSTEM-DESIGN.md for the full system design, data model, real-time
+ * protocol, and failure modes.
  *
- * When the backend lands (Phase 1+ in the design doc), the dispatch handlers
- * will swap from local-only state mutations to WebSocket-emitted commands +
- * server-driven state via REPLAY events. The component shape stays.
+ * Two transport paths, chosen at Invite (and at Start In-Office) time:
+ *
+ *   1. Backend — the normal path. `blsApi.createSession()` returns a real
+ *      session UUID plus a signed invite URL, and `buildTherapistWebSocketUrl`
+ *      gives us the Channels endpoint. The client can join from any device or
+ *      network, the server broadcasts CLIENT_CONNECTED / CLIENT_DISCONNECTED,
+ *      and the session is persisted, chart-logged, and audit-logged when
+ *      `blsApi.endSession()` fires.
+ *
+ *   2. BroadcastChannel demo — the fallback. If createSession() throws
+ *      (backend unreachable, network down), the panel synthesizes a local
+ *      session ID and syncs to a second tab of the same browser so the
+ *      feature still runs. Nothing is persisted server-side: `wsUrlRef` stays
+ *      null, and that null is exactly what gates the endSession write.
+ *
+ * On both paths the therapist panel is the clock — pass counts come from the
+ * local canvas renderer and the audio L/R beat runs off a local interval. The
+ * client view mirrors it through published STATE messages.
  */
 
-// Reducer + state shape + initial state + mockSessionId all live in
-// src/lib/blsReducer.ts as pure functions so they can be unit-tested without
-// React. Imports above pull in: blsReducer, buildInitialBLSPanelState,
-// PanelState, BLSAction.
+// Reducer + state shape + initial state + mockSessionId (the demo-path ID
+// generator) all live in src/lib/blsReducer.ts as pure functions so they can
+// be unit-tested without React. Imports above pull in: blsReducer,
+// buildInitialBLSPanelState, PanelState, BLSAction.
 
 export default function BLSControlPage() {
     // useReducer initializer form — buildInitialBLSPanelState runs once,
@@ -111,11 +122,11 @@ export default function BLSControlPage() {
     }, [searchParams])
 
     // ─── Sync transport — published state + listens for client events ──────
-    // When the user clicks Invite, we get a sessionId. From that point on, a
-    // BroadcastChannel-backed transport pushes STATE messages to the client
-    // tab on every config or runState change, and listens for the client's
-    // HELLO/BYE/VISIBILITY/AUDIO_FAILED messages. When the backend lands the
-    // transport is swapped for WebSocket and this orchestration is unchanged.
+    // When the user clicks Invite, we get a sessionId. From that point on the
+    // transport pushes STATE messages to the client on every config or
+    // runState change, and listens for the client's
+    // HELLO/BYE/VISIBILITY/AUDIO_FAILED messages. WebSocket or
+    // BroadcastChannel — the orchestration below is identical either way.
     useEffect(() => {
         const sessionId = state.live.sessionId
         if (!sessionId) return
@@ -338,9 +349,8 @@ export default function BLSControlPage() {
 
     // ─── Audio loop while running ───────────────────────────────────────────
     // Plays the selected sound L/R alternately at the configured speed. This
-    // is the same scheduling the real client view will use; for the mock we
-    // also play it through the therapist's speakers UNLESS muteForTherapist
-    // is set.
+    // is the same scheduling the client view uses; here we also play it
+    // through the therapist's speakers UNLESS muteForTherapist is set.
     useEffect(() => {
         if (state.live.runState !== 'running') {
             if (audioBeatRef.current !== null) {
@@ -508,7 +518,7 @@ export default function BLSControlPage() {
             })
 
             // Backend persistence — only fires when the session was created
-            // via the API (real session UUID + token). Mock/demo sessions
+            // via the API (real session UUID + token). Demo-mode sessions
             // synthesize their own ID locally so the server has no row to
             // end. We detect by checking whether the wsUrl was set.
             if (wsUrlRef.current && live.sessionId) {
